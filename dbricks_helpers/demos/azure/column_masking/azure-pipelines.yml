@@ -1,0 +1,120 @@
+# Pipeline for Column Masking
+
+# trigger:
+# - Datamasking_Upload
+
+pool:
+  vmImage: ubuntu-latest
+
+parameters:
+
+- name: region
+  displayName: 'Please Enter the Azure Region'
+  type: string
+  default: 'westus'  # Change to your default name
+
+- name: domainname
+  displayName: 'Please Select the Domain:'
+  type: string
+  default: 'frm'
+  values:
+    - 'ddm'
+    - 'frm'
+    - 'mm'
+    - 'pm'
+    - 'sm'
+  
+- name: environmentname
+  displayName: 'Please Select the Environment:'
+  type: string
+  default: 'dev'
+  values:
+    - 'dev'
+    - 'qa'
+    - 'uat'
+    - 'prod'
+
+- name: storagecontainername
+  displayName: 'Please Enter the Storage Container Name:'
+  type: string
+  default: 'datamasking'
+
+- name: maskingtemplatename
+  displayName: 'Please Enter the Excel Masking Template Name:'
+  type: string
+  default: 'datamasking_template.xlsx'
+
+variables:
+  - name: region
+    value: ${{ parameters.region }}
+  - name: domain_name
+    value: ${{ parameters.domainname }}
+  - name: environment_name
+    value: ${{ parameters.environmentname }}
+  - name: storage_container_name
+    value: ${{ parameters.storagecontainername }}
+  - name: masking_template_name
+    value: ${{ parameters.maskingtemplatename }}
+
+steps:
+
+- powershell: |
+    $domainName = "$(domain_name)"
+    $envName = "$(environment_name)"
+
+    $jsonContent = Get-Content -Path './data_masking/domain_manifest.json' | ConvertFrom-Json
+    $environmentData = $jsonContent.domains.$domainName.environments.$envName
+
+    # store domain environment values as env variables
+    Write-Output "##vso[task.setvariable variable=tenant;]$($environmentData.tenant)"
+    Write-Output "##vso[task.setvariable variable=subscription;]$($environmentData.subscription)"
+    Write-Output "##vso[task.setvariable variable=region;]$($environmentData.region)"
+    Write-Output "##vso[task.setvariable variable=resource_group;]$($environmentData.resource_group)"
+    Write-Output "##vso[task.setvariable variable=databricks_workspace;]$($environmentData.databricks_workspace)"
+    Write-Output "##vso[task.setvariable variable=storage_account_name;]$($environmentData.storage_account_name)"
+    Write-Output "##vso[task.setvariable variable=keyvault_name;]$($environmentData.keyvault_name)"
+    Write-Output "##vso[task.setvariable variable=client_id;]$($environmentData.client_id)"
+  displayName: 'set environment variables from the domain manifest'
+
+
+- powershell: |
+    $source_file_path = "data_masking/$(domain_name)/$(environment_name)/$(masking_template_name)"
+    Write-Output "##vso[task.setvariable variable=source_file_path;]$source_file_path"
+  displayName: 'set the source file path for column masking input params'
+
+
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: 'ado-rg-$(domain_name)-$(region)-$(environment_name)-sc'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      # Fetch the storage account key
+      key=$(az storage account keys list --account-name "$(storage_account_name)" --resource-group "$(resource_group)" --query '[0].value' --output tsv)
+      # Set the key as a pipeline variable and mask it in the logs
+      echo "##vso[task.setvariable variable=storage_account_key;isSecret=true]$key"
+  displayName: 'use Azure CLI to fetch the storage account key'
+
+
+- script: |
+    echo "domain_name: $(domain_name)"
+    echo "environment_name: $(environment_name)"
+    echo "ado xlsx source_file_path: $(source_file_path)"
+    echo "storage_account_name: $(storage_account_name)"
+    echo "storage_account_key: $(storage_account_key)"
+    echo "storage_container_name: $(storage_container_name)"
+    echo "tenant: $(tenant)"
+    echo "subscription: $(subscription)"
+    echo "region: $(region)"
+    echo "resource_group: $(resource_group)"
+    echo "databricks_workspace: $(databricks_workspace)"
+    echo "keyvault_name: $(keyvault_name)"
+    echo "client_id: $(client_id)"
+  displayName: 'print the environment variable values for verification'
+
+
+- script: |
+    # Set the Azure Storage account context
+    az storage blob upload --type block --account-name "$(storage_account_name)" --account-key "$(storage_account_key)" --container-name "$(storage_container_name)" --name "col_masking_input/masking.xlsx" --type block --file "$(source_file_path)" --overwrite
+    echo "XLSX file copied to Azure Storage Container successfully!"
+  displayName: 'copy the excel column masking input parameters to the azure storage account'
