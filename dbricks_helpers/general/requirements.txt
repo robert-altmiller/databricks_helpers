@@ -1,0 +1,7 @@
+azure-identity
+azure-storage-blob
+python-dotenv
+numpy
+pandas
+pyspark
+requests
