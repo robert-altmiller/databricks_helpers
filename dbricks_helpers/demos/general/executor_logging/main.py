@@ -117,6 +117,3 @@ fig = px.line(
 
 fig.update_layout(xaxis_tickformat="%H:%M:%S", xaxis_title="End Time", yaxis_title="Row Level UDF Duration (seconds)")
 fig.show()
-
-# COMMAND ----------
-
