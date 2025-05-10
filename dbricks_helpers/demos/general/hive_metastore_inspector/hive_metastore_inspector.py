@@ -62,7 +62,7 @@ class HiveMetastoreInspector:
 
             metadata = {
                 "table_fqn": f"hive_metastore.{db}.{tbl}",
-                "catalog": "hive_metastore",
+                "catalog": None,
                 "schema": db,
                 "table": tbl,
                 "created_at": None,
@@ -98,7 +98,9 @@ class HiveMetastoreInspector:
                                 k, v = item.split("=", 1)
                                 metadata["properties"][k.strip()] = v.strip()
                     elif field in metadata:
-                        metadata[field] = val
+                        if field == "catalog":
+                            metadata[field] = "hive_metastore"
+                        else: metadata[field] = val
 
             return Row(**metadata)
 
@@ -185,10 +187,21 @@ if method == "dataframe": # then return dataframe
 
 else: # return json and write to dbfs/tmp
 
-  json_result = json.dumps(inspector.collect_metadata(return_type="json"))
+  json_result = inspector.collect_metadata(return_type="json")
   # Define output path (accessible from Databricks File System)
   output_path = "/dbfs/tmp/hive_metadata.json"
   # Write JSON to file
   with open(output_path, "w+") as f:
-      json.dump(json_result, f, indent=2)
+      json.dump(json_result, f)
   print(f"✅ JSON metadata written to: {output_path}")
+
+# COMMAND ----------
+
+# DBTITLE 1,Read Hive Metastore Metadata and Print Json
+# Read the JSON file from DBFS
+with open("/dbfs/tmp/hive_metadata.json", "r") as f:
+    metadata = json.load(f)
+
+# Preview the first few records
+from pprint import pprint
+pprint(metadata)  # or print(json.dumps(metadata[:2], indent=2))
