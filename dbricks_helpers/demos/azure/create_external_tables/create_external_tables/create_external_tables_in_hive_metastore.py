@@ -49,14 +49,6 @@ def create_external_table_adls_csv(
         spark.conf.set(f"{key}.{storage_account_name}.dfs.core.windows.net", value)
         spark._jsc.hadoopConfiguration().set(f"{key}.{storage_account_name}.dfs.core.windows.net", value)
 
-    test_path = f"abfss://{container_name}@{storage_account_name}.dfs.core.windows.net/{container_subfolder}/batch_data/batch_data.csv"
-    try:
-        spark.read.format("csv").option("header", "true").load(test_path).limit(1).show()
-        print("✅ OAuth config and path access working.")
-    except Exception as e:
-        print("❌ Access test failed:", e)
-        return
-
     base_path = f"abfss://{container_name}@{storage_account_name}.dfs.core.windows.net/{container_subfolder}"
 
     try:
