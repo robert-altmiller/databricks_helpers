@@ -26,6 +26,9 @@ for mount in dbutils.fs.mounts():
 notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
 workspace_file_path = f"{notebook_path.rsplit('/', 1)[0]}"
 
+# Min threads for multi-threading
+min_threads = 3
+
 # COMMAND ----------
 
 # DBTITLE 1,Initialize Logging
@@ -263,7 +266,7 @@ def process_schema(schema: str) -> str:
         return f"❌ Failed schema: {schema}\n"
 
 # Run in multithreaded mode
-max_threads = min(5, len(schemas))  # adjust for cluster capability
+max_threads = min(min_threads, len(schemas))  # adjust for cluster capability
 with ThreadPoolExecutor(max_workers=max_threads) as executor:
     futures = [executor.submit(process_schema, schema) for schema in schemas]
     for future in as_completed(futures):
