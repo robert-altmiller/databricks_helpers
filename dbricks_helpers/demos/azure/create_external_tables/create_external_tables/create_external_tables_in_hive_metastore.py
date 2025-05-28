@@ -74,7 +74,7 @@ def create_external_table_adls_csv(
         print(f"table_location: {table_location}")
 
         create_table_sql = f"""
-        CREATE EXTERNAL TABLE IF NOT EXISTS `{schema_name}`.`{table_name}`
+        CREATE EXTERNAL TABLE IF NOT EXISTS `{catalog_name}`.`{schema_name}`.`{table_name}`
         USING CSV
         OPTIONS (
           'header' = 'true',
@@ -84,7 +84,7 @@ def create_external_table_adls_csv(
         )
         """
         spark.sql(create_table_sql)
-        print(f"External table '{table_name}' created successfully.")
+        print(f"External table `{catalog_name}`.`{schema_name}`.`{table_name}` created successfully.")
 
 
 create_external_table_adls_csv(    
