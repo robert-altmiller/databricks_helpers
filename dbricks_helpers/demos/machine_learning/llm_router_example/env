@@ -1,0 +1,4 @@
+OPENAI_DEPLOYMENT_NAME=XXXXX
+PAT_TOKEN=dapi2fXXXXXXX
+FOUNDATION_MODEL_EP=https://adb-4247081124391553.13.azuredatabricks.net/serving-endpoints
+FOUNDATION_MODEL_NAME=databricks-claude-3-7-sonnet

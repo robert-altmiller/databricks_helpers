@@ -1,0 +1,13 @@
+name: mcp_model_env
+channels:
+  - defaults
+  - conda-forge
+
+dependencies:
+  - python=3.9         # or whichever 3.x you prefer
+  - pip
+
+  - pip:
+    - mlflow
+    - openai
+    - pandas
