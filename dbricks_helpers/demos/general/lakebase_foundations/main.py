@@ -33,13 +33,13 @@ print(f"pat_token: {pat_token}")
 user_email = dbutils.notebook.entry_point.getDbutils().notebook().getContext().userName().get()
 print(f"user_email: {user_email}")
 
-database_instance_name = "data-contract-db"
+database_instance_name = "postgres-instance"
 print(f"database_instance_name: {database_instance_name}")
 
-postgres_database_name = "data_contracts_oltp"
+postgres_database_name = "postgres_database"
 print(f"postgres_database_name: {postgres_database_name}")
 
-database_catalog_name = "data_contracts_oltp"
+database_catalog_name = "postgres_catalog"
 print(f"database_catalog_name: {database_catalog_name}")
 
 database_schema_name = "public"

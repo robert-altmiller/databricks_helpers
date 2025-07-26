@@ -113,13 +113,13 @@ def start_stop_oltp_db(ws_client: WorkspaceClient, db_instance_name: str, start_
 # COMMAND ----------
 
 # DBTITLE 1,Get OLAP Database Status
-def get_oltp_db_status(ws_client: WorkspaceClient, db_instance_name: str, timeout: int = 360, poll_interval: int = 5):
+def get_oltp_db_status(ws_client: WorkspaceClient, db_instance_name: str, timeout: int = 1000, poll_interval: int = 5):
     """
     Polls the oltp database instance status until it becomes AVAILABLE.
     Parameters:
         ws_client (WorkspaceClient): Initialized Databricks Workspace SDK client.
         db_instance_name (str): Name of the oltp database instance.
-        timeout (int): Maximum time to wait in seconds (default: 360).
+        timeout (int): Maximum time to wait in seconds (default: 1000).
         poll_interval (int): Time interval between polls in seconds (default: 5).
     Returns:
         None. Prints when the instance becomes AVAILABLE.
@@ -219,6 +219,10 @@ def create_oltp_db_catalog(
         - Set `create_database_if_not_exists=True` to auto-create the schema inside the oltp DB if needed.
     """
     try:
+        # Ensure instance is started
+        start_stop_oltp_db(ws_client, db_instance_name, False)
+        get_oltp_db_status(ws_client, db_instance_name)
+        
         # Attempt to fetch the oltp instance to verify it exists
         existing = ws_client.database.get_database_instance(name=db_instance_name)
         if existing and existing.name == db_instance_name:
