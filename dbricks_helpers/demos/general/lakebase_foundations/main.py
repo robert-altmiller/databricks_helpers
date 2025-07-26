@@ -121,7 +121,7 @@ display_oltp_table_column_datatypes(oltp_db_conn, table_name)
 # Sample product data
 data = [
     Row(
-        product_id="P003",
+        product_id="P001",
         product_name="Smartphone X",
         category="Electronics",
         brand="TechCorp",
