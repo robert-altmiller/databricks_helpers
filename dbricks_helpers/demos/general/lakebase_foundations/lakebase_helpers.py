@@ -496,7 +496,7 @@ def truncate(val, max_len=80):
 def display_oltp_db_sql(db_conn, sql_statement = None):
     """
     Executes a SQL statement against an OLTP PostgreSQL-connected Databricks database
-    and prints the first result row.
+    and prints all the resulting rows.
     Parameters:
         db_conn (psycopg2.connection): Active OLTP DB connection.
         sql_statement (str): The SQL query to execute.

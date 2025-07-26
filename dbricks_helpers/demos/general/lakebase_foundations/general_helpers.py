@@ -73,7 +73,7 @@ def normalize_type(raw_type: str) -> str:
         - Otherwise, the base type is extracted and mapped using TYPE_MAP.
     """
 
-# Type normalization map
+    # Type normalization map
     TYPE_MAP = {
         # Scalar types
         "BIGINT": "BIGINT",
