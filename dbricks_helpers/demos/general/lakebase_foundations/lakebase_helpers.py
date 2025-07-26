@@ -69,8 +69,9 @@ def delete_oltp_db_instance(
         # If the instance is found, proceed to delete
         if existing and existing.name == db_instance_name:
             print(f"✅ oltp database instance '{db_instance_name}' exists.")
-            ws_client.database.delete_database_instance(name=db_instance_name, purge=True)
+            result = ws_client.database.delete_database_instance(name=db_instance_name, purge=True)
             print(f"✅ oltp database instance '{db_instance_name}' deleted successfully.")
+            return result.uid
     except Exception as e:
         # Print the error if the instance is not found or deletion fails
         print(f"❌ Failed to delete database instance '{db_instance_name}': {e}")
