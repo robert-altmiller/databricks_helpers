@@ -1,4 +1,8 @@
 # Databricks notebook source
+# DBTITLE 1,Import General Helpers
+# MAGIC %run "./general_helpers"
+
+# Databricks notebook source
 # DBTITLE 1,Create New OLAP Database
 def create_oltp_db_instance(
     ws_client: WorkspaceClient, 
