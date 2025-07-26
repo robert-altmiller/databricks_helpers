@@ -515,7 +515,7 @@ def display_oltp_db_sql(db_conn, sql_statement = None):
         print(f"❌ Failed to execute SQL statement: {e}")
 
 # Unit test
-# execute_oltp_db_sql_and_show_result(oltp_db_conn, verify_stmt)
+# display_oltp_db_sql(oltp_db_conn, verify_stmt)
 
 # COMMAND ----------
 
@@ -555,4 +555,4 @@ def display_oltp_table_column_datatypes(db_conn, table_name):
         ORDER BY 
             a.attnum;
     """
-    execute_oltp_db_sql_and_show_result(db_conn, SQL)
+    display_oltp_db_sql(db_conn, SQL)
