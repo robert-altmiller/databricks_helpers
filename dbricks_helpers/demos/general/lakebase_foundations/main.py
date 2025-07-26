@@ -18,11 +18,6 @@ from databricks.sdk.service.catalog import *
 
 # COMMAND ----------
 
-# DBTITLE 1,Authoring Helpers
-# MAGIC %run "./authoring_helpers"
-
-# COMMAND ----------
-
 # DBTITLE 1,Lakebase Helpers
 # MAGIC %run "./lakebase_helpers"
 
