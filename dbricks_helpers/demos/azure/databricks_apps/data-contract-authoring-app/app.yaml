@@ -1,0 +1,4 @@
+command: ['streamlit', 'run', 'app.py']
+# env:
+#   - name: 'USER_EMAIL'
+#     value: 'robert.altmiller@databricks.com'
