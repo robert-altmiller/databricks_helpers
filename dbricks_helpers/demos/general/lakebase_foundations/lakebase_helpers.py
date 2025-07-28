@@ -445,15 +445,14 @@ def delete_oltp_db_table(db_conn, table_name: str):
 # COMMAND ----------
 
 # DBTITLE 1,Execute OLTP SQL Statement
-def execute_oltp_db_sql(db_conn, sql_statement = None, single_json_table = None, single_json_col = None, single_json_str = None):
+def execute_oltp_db_sql(db_conn, sql_statement = None, insert_update_list = None):
     """
     Execute a SQL statement against the OLTP PostgreSQL-connected Databricks database.
     Parameters:
         db_conn (psycopg2.connection): Active OLTP DB connection.
         sql_statement (str): Raw SQL statement to execute (used if JSON inputs are not provided).
-        single_json_table (str): Name of the table to insert into if using JSON.
-        single_json_col (str): Name of the column to insert the JSON into.
-        single_json_str (str): JSON string to insert into the specified table and column.
+        insert_update_list (list): Contains JSON string to insert or match on in the specified sql_statement.
+            - Example with single_json_str: f"INSERT INTO table (column) VALUES (%s::jsonb);, [insert_update_list]"
     Returns:
         None. Prints success or failure message.
     """
@@ -464,27 +463,44 @@ def execute_oltp_db_sql(db_conn, sql_statement = None, single_json_table = None,
         # Create a new cursor for executing the SQL
         cursor = db_conn.cursor()
 
+        # Track whether this is a write operation
+        is_write_op = False
+
         # If JSON string is provided, insert it into the specified table and column
-        if single_json_str is not None:
+        if insert_update_list is not None:
             cursor.execute(
-                f"INSERT INTO {single_json_table} ({single_json_col}) VALUES (%s::jsonb);",
-                [single_json_str]
+                f"{sql_statement}", 
+                insert_update_list
             )
+            is_write_op = True
         else:
             # Otherwise, execute the provided raw SQL statement
             cursor.execute(sql_statement)
+            is_write_op = sql_statement.strip().upper().startswith(("INSERT", "UPDATE", "DELETE", "CREATE", "DROP"))
 
-        # Commit the transaction
-        db_conn.commit()
-        print(f"✅ SQL statement executed successfully.")
+        # Commit only if this was a write operation
+        if is_write_op:
+            # Commit the transaction
+            db_conn.commit()
+            print(f"✅ SQL statement executed and committed successfully.")
+        else:
+            print(f"✅ Read-only SQL statement executed successfully.")
+            try:
+                rows = cursor.fetchall()
+                colnames = [desc[0] for desc in cursor.description]
+                return rows, colnames
+            except psycopg2.ProgrammingError:
+                # No results to fetch (e.g., DDL or non-returning statement)
+                pass
 
     except Exception as e:
         # Rollback and report any failure
+        db_conn.rollback()
         print(f"❌ Failed to execute SQL statement: {e}")
 
 
 # Unit test
-# execute_oltp_db_sql(oltp_db_conn, single_json_table = table_name, single_json_col = "value", single_json_str = json_str)
+# execute_oltp_db_sql(oltp_db_conn, sql_statement, single_json_str)
 
 # COMMAND ----------
 
@@ -562,3 +578,29 @@ def display_oltp_table_column_datatypes(db_conn, table_name):
             a.attnum;
     """
     display_oltp_db_sql(db_conn, SQL)
+    
+# COMMAND ----------
+
+# DBTITLE 1,Get Tables Names in an OLTP Database Public Schema
+def list_public_tables(db_conn):
+    """
+    Retrieve all table names in the 'public' schema of a PostgreSQL-compatible OLTP database.
+    Parameters:
+        oltp_db_conn (psycopg2.connection): An active PostgreSQL database connection.
+    Returns:
+        List[str]: A list of table names in the 'public' schema.
+    Raises:
+        Exception: If the query fails or the connection is invalid.
+    """
+    try:
+        cursor = db_conn.cursor()
+        cursor.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public';")
+        tables = [row[0] for row in cursor.fetchall()]
+        return tables
+    except Exception as e:
+        raise Exception(f"Failed to list tables in public tables: {e}")
+
+
+# Unit test
+# tables = list_public_tables(oltp_db_conn)
+# print(tables)

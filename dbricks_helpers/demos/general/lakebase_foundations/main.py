@@ -18,6 +18,11 @@ from databricks.sdk.service.catalog import *
 
 # COMMAND ----------
 
+# DBTITLE 1,Authoring Helpers
+# MAGIC %run "./authoring_helpers"
+
+# COMMAND ----------
+
 # DBTITLE 1,Lakebase Helpers
 # MAGIC %run "./lakebase_helpers"
 
@@ -167,7 +172,7 @@ SQL = """
         tags,
         specs
     ) VALUES (
-        'P001',
+        'P002',
         'Smartphone X',
         'Electronics',
         'TechCorp',
@@ -184,18 +189,38 @@ execute_oltp_db_sql(oltp_db_conn, SQL)
 
 # COMMAND ----------
 
+# DBTITLE 1,List All Tables in the OLTP Database Public Schema
+tables = list_public_tables(oltp_db_conn)
+print(tables)
+
+# COMMAND ----------
+
+# DBTITLE 1,Read All Records From the Table into Spark Dataframe
+df = read_oltp_table_into_spark_df(oltp_db_conn, table_name)
+display(df) 
+
+# COMMAND ----------
+
 # DBTITLE 1,Query Data From the Table
 # Count total records in the table
 SQL = f"""
     SELECT count(*) AS record_count FROM {table_name};
 """
 display_oltp_db_sql(oltp_db_conn, SQL)
+rows, columns = execute_oltp_db_sql(oltp_db_conn, SQL)
+df = spark.createDataFrame(rows, columns)
+display(df) 
+
 
 # Show all records in the table
 SQL = f"""
     SELECT * FROM {table_name};
 """
 display_oltp_db_sql(oltp_db_conn, SQL)
+rows, columns = execute_oltp_db_sql(oltp_db_conn, SQL)
+df = spark.createDataFrame(rows, columns)
+display(df) 
+
 
 # Expand out JSONB dictionary and list
 SQL = f"""
@@ -210,3 +235,7 @@ SQL = f"""
     FROM {table_name};
 """
 display_oltp_db_sql(oltp_db_conn, SQL)
+
+rows, columns = execute_oltp_db_sql(oltp_db_conn, SQL)
+df = spark.createDataFrame(rows, columns)
+display(df) 
