@@ -84,6 +84,7 @@ def list_workflows(dbricks_instance=None, dbricks_pat=None):
         return []
     return response.json().get("jobs", [])
 
+job_ids = list_workflows(databricks_instance, databricks_token)
 
 # COMMAND ----------
 
@@ -119,6 +120,7 @@ def get_workflow_job_details(dbricks_instance=None, dbricks_pat=None, job_id=Non
 dbfs_path = "./workflows_downloaded"
 delete_directory(dbfs_path)
 for jobid in job_ids:
+    jobid = jobid["job_id"]
     wf_details = json.dumps(get_workflow_job_details(databricks_instance, databricks_token, jobid))
     wf_details_json = json.loads(wf_details)
     wf_name = wf_details_json["settings"]["name"]
