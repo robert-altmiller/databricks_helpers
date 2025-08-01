@@ -1,6 +1,6 @@
 # Databricks notebook source
 # DBTITLE 1,Library Imports
-import json, requests, os
+import json, requests, os, copy
 from typing import Dict, Any
 
 # COMMAND ----------
@@ -10,9 +10,12 @@ databricks_instance = str(spark.conf.get("spark.databricks.workspaceUrl"))
 print(f"databricks_instance: {databricks_instance}")
 databricks_token = str(dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get())
 folder_path = "workflows_downloaded"
+deploy_environment = "aws" # or azure
+overwrite_workflows = True
 
 # COMMAND ----------
 
+# DBTITLE 1,Read Workflow Definitions
 def load_json_folder_to_dict(folder_path: str, strip_extension: bool = False) -> Dict[str, Any]:
     """
     Load all JSON files from a folder into a dictionary.
@@ -46,6 +49,104 @@ print(workflows_data)
 
 # COMMAND ----------
 
+# DBTITLE 1,Convert Azure Workflow for AWS
+import copy, json
+
+def convert_azure_to_aws_cluster(workflow_payload, default_node="i3.xlarge"):
+    """
+    Convert a Databricks workflow cluster definition from Azure-specific
+    attributes to AWS-compatible attributes.
+    Supports both:
+      - Multi-task jobs with `job_clusters`
+      - Single-task jobs with top-level `new_cluster`
+    Steps:
+      1. Removes Azure-only fields (e.g., `azure_attributes`).
+      2. Ensures AWS attributes (`aws_attributes`) are present with a default spot policy.
+      3. Maps Azure VM SKUs to the closest AWS instance types.
+      4. Falls back to `default_node` if no mapping is found.
+    Args:
+        workflow_payload (dict): Workflow/job JSON definition.
+        default_node (str): AWS node_type_id to use when no mapping exists.
+    Returns:
+        dict: Updated workflow payload ready for AWS deployment.
+    Raises:
+        ValueError: If neither `job_clusters` nor `new_cluster` is found.
+    """
+    wf = copy.deepcopy(workflow_payload)
+    # Azure → AWS node type mapping
+    node_map = {
+        # General Purpose (Dsv5 → M5d)
+        "Standard_D4ds_v5": "m5d.xlarge",
+        "Standard_D8ds_v5": "m5d.2xlarge",
+        "Standard_D16ds_v5": "m5d.4xlarge",
+        "Standard_D32ds_v5": "m5d.8xlarge",
+        "Standard_D64ds_v5": "m5d.16xlarge",
+
+        # Memory Optimized (Esv5 → R5d)
+        "Standard_E8ds_v5": "r5d.2xlarge",
+        "Standard_E16ds_v5": "r5d.4xlarge",
+        "Standard_E32ds_v5": "r5d.8xlarge",
+        "Standard_E64ds_v5": "r5d.16xlarge",
+
+        # Compute Optimized (Fsv2 → C5d)
+        "Standard_F4s_v2": "c5d.xlarge",
+        "Standard_F8s_v2": "c5d.2xlarge",
+        "Standard_F16s_v2": "c5d.4xlarge",
+        "Standard_F32s_v2": "c5d.9xlarge",
+
+        # Storage Optimized (Lsv3 → I3)
+        "Standard_L8s_v3": "i3.2xlarge",
+        "Standard_L16s_v3": "i3.4xlarge",
+        "Standard_L32s_v3": "i3.8xlarge",
+        "Standard_L64s_v3": "i3.16xlarge",
+
+        # Memory Heavy (G-series → x1 family)
+        "Standard_G5": "x1.32xlarge",   # 32 vCPU, 448 GB RAM
+        "Standard_GS5": "x1e.32xlarge", # 32 vCPU, 976 GB RAM (extra memory)
+
+        # GPU (NC/ND → P3 family)
+        "Standard_NC6": "p3.2xlarge",    # 1 GPU, 12 vCPU
+        "Standard_NC12": "p3.8xlarge",   # 4 GPU, 48 vCPU
+        "Standard_NC24": "p3.16xlarge",  # 8 GPU, 64 vCPU
+        "Standard_ND40rs_v2": "p3dn.24xlarge", # ML/AI workloads
+
+        # HPC (HB/HC → c5n or hpc families)
+        "Standard_HB120rs_v2": "c5n.18xlarge",
+        "Standard_HC44rs": "c5n.9xlarge",
+    }
+
+    def patch_cluster(cluster: dict):
+        """
+        Patch a cluster definition:
+          - remove Azure-only attributes
+          - add aws_attributes if missing
+          - translate node_type_id if needed
+        """
+        cluster.pop("azure_attributes", None)
+        cluster.setdefault("aws_attributes", {
+            "availability": "SPOT_WITH_FALLBACK_ON_DEMAND"
+        })
+        node_type = cluster.get("node_type_id")
+        if node_type in node_map:
+            cluster["node_type_id"] = node_map[node_type]
+        elif not node_type:
+            cluster["node_type_id"] = default_node
+        return cluster
+
+    # Multi-task job (job_clusters block)
+    if "job_clusters" in wf and wf["job_clusters"]:
+        for cluster_spec in wf["job_clusters"]:
+            cluster_spec["new_cluster"] = patch_cluster(cluster_spec.get("new_cluster", {}))
+    # Single-task job (top-level new_cluster)
+    elif "new_cluster" in wf:
+        wf["new_cluster"] = patch_cluster(wf.get("new_cluster", {}))
+    else:
+        raise ValueError("No job_clusters or new_cluster found in workflow payload")
+    return wf
+
+# COMMAND ----------
+
+# DBTITLE 1,Deploy Workflows to Azure or AWS
 def deploy_workflow(dbricks_instance=None, dbricks_pat=None, workflow_def=None, overwrite=False):
     """
     Deploy a Databricks workflow (Job).
@@ -96,15 +197,17 @@ def deploy_workflow(dbricks_instance=None, dbricks_pat=None, workflow_def=None, 
     except requests.exceptions.RequestException as e:
         print(f"❌ ERROR deploying workflow '{job_name}': {str(e)}")
         if 'response' in locals() and response is not None:
-            print(f"Response: {response.text}")
+           print(f"Response: {response.text}")
         return {}
 
 
 # Example usage: overwrite existing jobs
 for workflow_name, workflow_def in workflows_data.items():
     workflow_def["settings"]["name"] = f"test_deploy_{workflow_name}"
-    result = deploy_workflow(databricks_instance, databricks_token, workflow_def["settings"], overwrite=True)
+    if deploy_environment == "azure":
+        azure_workflow_payload =  workflow_def["settings"]
+        result = deploy_workflow(databricks_instance, databricks_token, azure_workflow_payload, overwrite = overwrite_workflows)
+    else: # deploy environment is aws
+        aws_workflow_payload = convert_azure_to_aws_cluster(workflow_def["settings"])
+        result = deploy_workflow(databricks_instance, databricks_token, aws_workflow_payload, overwrite = overwrite_workflows)
     print(f"workflow_name: {workflow_name}, result: {result}")
-
-# COMMAND ----------
-
