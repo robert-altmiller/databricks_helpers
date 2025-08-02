@@ -164,7 +164,7 @@ import re
 
 #Change per catalog/schema they want to evaluate here.  Alternatively, just create this into one massive function, get the list of catalog/schema combos and then iterate it over and over again and output it to a delta table.  
 #TODO - if I have time, maybe I can just do this? - there might be a more efficient way to do this other than just brute forcing it.
-catalog = 'boeingeastus'
+catalog = 'hive_metastore'
 schema =  'default'
 
 #Don't know why there was a tab when it generated the URL leveraging the original f string so I separated it out into a regular URL and regex any spaces.  
