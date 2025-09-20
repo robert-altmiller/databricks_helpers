@@ -11,6 +11,7 @@ print(f"databricks_instance: {databricks_instance}")
 databricks_token = str(dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get())
 folder_path = "workflows_downloaded"
 deploy_environment = "aws" # or azure
+workflow_name_prefix = "test_deploy"
 overwrite_workflows = True
 
 # COMMAND ----------
@@ -203,7 +204,7 @@ def deploy_workflow(dbricks_instance=None, dbricks_pat=None, workflow_def=None, 
 
 # Example usage: overwrite existing jobs
 for workflow_name, workflow_def in workflows_data.items():
-    workflow_def["settings"]["name"] = f"test_deploy_{workflow_name}"
+    workflow_def["settings"]["name"] = f"{workflow_name_prefix}_{workflow_name}"
     if deploy_environment == "azure":
         azure_workflow_payload =  workflow_def["settings"]
         result = deploy_workflow(databricks_instance, databricks_token, azure_workflow_payload, overwrite = overwrite_workflows)

@@ -1,0 +1,133 @@
+resources:
+  jobs:
+    azure_multistep_workflow:
+      name: azure_multistep_workflow
+      tasks:
+        - task_key: step1_ingest
+          notebook_task:
+            notebook_path: notebooks/01_ingest
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step2_validate
+          depends_on:
+            - task_key: step1_ingest
+          notebook_task:
+            notebook_path: notebooks/02_validate
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step3a_cleanse
+          depends_on:
+            - task_key: step2_validate
+          notebook_task:
+            notebook_path: notebooks/03a_cleanse
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step3b_enrich
+          depends_on:
+            - task_key: step2_validate
+          notebook_task:
+            notebook_path: notebooks/03b_enrich
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step4a_silver
+          depends_on:
+            - task_key: step3a_cleanse
+          notebook_task:
+            notebook_path: notebooks/04a_silver
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step4b_features
+          depends_on:
+            - task_key: step3b_enrich
+          notebook_task:
+            notebook_path: notebooks/04b_features
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step5_gold
+          depends_on:
+            - task_key: step4a_silver
+            - task_key: step4b_features
+          notebook_task:
+            notebook_path: notebooks/05_gold
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step6a_metrics
+          depends_on:
+            - task_key: step5_gold
+          notebook_task:
+            notebook_path: notebooks/06a_metrics
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step6b_dq_checks
+          depends_on:
+            - task_key: step5_gold
+          notebook_task:
+            notebook_path: notebooks/06b_dq_checks
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step7_reporting
+          depends_on:
+            - task_key: step6a_metrics
+            - task_key: step6b_dq_checks
+          notebook_task:
+            notebook_path: notebooks/07_reporting
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step8_ml_training
+          depends_on:
+            - task_key: step6a_metrics
+          notebook_task:
+            notebook_path: notebooks/08_ml_training
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step9_publish
+          depends_on:
+            - task_key: step7_reporting
+            - task_key: step8_ml_training
+          notebook_task:
+            notebook_path: notebooks/09_publish
+            source: GIT
+          job_cluster_key: Job_cluster
+
+        - task_key: step10_notify
+          depends_on:
+            - task_key: step9_publish
+          notebook_task:
+            notebook_path: notebooks/10_notify
+            source: GIT
+          job_cluster_key: Job_cluster
+
+      job_clusters:
+        - job_cluster_key: Job_cluster
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            azure_attributes:
+              first_on_demand: 1
+              availability: SPOT_WITH_FALLBACK_AZURE
+              spot_bid_max_price: -1
+            node_type_id: Standard_D4ds_v5
+            spark_env_vars:
+              PYSPARK_PYTHON: /databricks/python3/bin/python3
+            enable_elastic_disk: true
+            data_security_mode: SINGLE_USER
+            runtime_engine: PHOTON
+            num_workers: 2
+
+      git_source:
+        git_url: https://github.com/robert-altmiller/odcs_data_contracts.git
+        git_provider: gitHub
+        git_branch: robert-altmiller/versioning
+
+      queue:
+        enabled: true
