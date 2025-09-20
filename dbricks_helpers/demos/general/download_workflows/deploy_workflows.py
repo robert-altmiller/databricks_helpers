@@ -221,10 +221,9 @@ def deploy_workflow(dbricks_instance=None, dbricks_pat=None, workflow_def=None, 
         return {}
 
 
-# Example usage: overwrite existing jobs
-# Example usage: overwrite existing jobs
+# Example usage: overwrite existing jobs or create new jobs with job name prefix
 for workflow_name, workflow_def in workflows_data.items():
-    workflow_def["settings"]["name"] = f"test_deploy_{workflow_name}"
+    workflow_def["settings"]["name"] = f"{workflow_name_prefix}_{workflow_name}"
     if deploy_environment == "azure":
         azure_workflow_payload =  workflow_def["settings"]
         if change_compute_to_serverless == True: 
