@@ -12,6 +12,7 @@ databricks_token = str(dbutils.notebook.entry_point.getDbutils().notebook().getC
 folder_path = "workflows_downloaded"
 deploy_environment = "aws" # or azure
 workflow_name_prefix = "test_deploy"
+change_compute_to_serverless = True
 overwrite_workflows = True
 
 # COMMAND ----------
@@ -51,8 +52,6 @@ print(workflows_data)
 # COMMAND ----------
 
 # DBTITLE 1,Convert Azure Workflow for AWS
-import copy, json
-
 def convert_azure_to_aws_cluster(workflow_payload, default_node="i3.xlarge"):
     """
     Convert a Databricks workflow cluster definition from Azure-specific
@@ -145,6 +144,26 @@ def convert_azure_to_aws_cluster(workflow_payload, default_node="i3.xlarge"):
         raise ValueError("No job_clusters or new_cluster found in workflow payload")
     return wf
 
+
+def convert_job_to_serverless(settings: dict) -> dict:
+    """
+    Convert a Databricks job *settings* dict from using job_clusters to serverless compute.
+    Args:
+        settings (dict): The "settings" block of a Databricks job JSON.
+    Returns:
+        dict: Modified settings dict that runs all tasks on serverless.
+    """
+    new_settings = copy.deepcopy(settings)
+
+    # Remove job_clusters
+    new_settings.pop("job_clusters", None)
+
+    # Replace job_cluster_key in tasks
+    for task in new_settings.get("tasks", []):
+        task.pop("job_cluster_key", None)
+        task["compute"] = "serverless"
+    return new_settings
+
 # COMMAND ----------
 
 # DBTITLE 1,Deploy Workflows to Azure or AWS
@@ -203,12 +222,18 @@ def deploy_workflow(dbricks_instance=None, dbricks_pat=None, workflow_def=None, 
 
 
 # Example usage: overwrite existing jobs
+# Example usage: overwrite existing jobs
 for workflow_name, workflow_def in workflows_data.items():
-    workflow_def["settings"]["name"] = f"{workflow_name_prefix}_{workflow_name}"
+    workflow_def["settings"]["name"] = f"test_deploy_{workflow_name}"
     if deploy_environment == "azure":
         azure_workflow_payload =  workflow_def["settings"]
+        if change_compute_to_serverless == True: 
+            azure_workflow_payload = convert_job_to_serverless(azure_workflow_payload)
         result = deploy_workflow(databricks_instance, databricks_token, azure_workflow_payload, overwrite = overwrite_workflows)
     else: # deploy environment is aws
-        aws_workflow_payload = convert_azure_to_aws_cluster(workflow_def["settings"])
+        if change_compute_to_serverless == True: 
+            aws_workflow_payload = convert_job_to_serverless(workflow_def["settings"])
+        else:
+            aws_workflow_payload = convert_azure_to_aws_cluster(workflow_def["settings"])
         result = deploy_workflow(databricks_instance, databricks_token, aws_workflow_payload, overwrite = overwrite_workflows)
     print(f"workflow_name: {workflow_name}, result: {result}")
