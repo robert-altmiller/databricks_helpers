@@ -9,16 +9,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # COMMAND ----------
 
 # DBTITLE 1,Setup Databricks Widgets
-dbutils.widgets.text("Catalog", "", "Enter Catalog Name (Mandatory):")
 dbutils.widgets.text("Input Path", "", "Enter Base Volumes Path (Mandatory):")
 dbutils.widgets.dropdown("Always Update Comments", choices=["true", "false"], defaultValue="true", label="Always Update Comments (Optional):")
 
 # COMMAND ----------
 
 # DBTITLE 1,Local Parameters
-catalog = dbutils.widgets.get("Catalog")
-print(f"catalog: {catalog}")
-
 output_path = dbutils.widgets.get("Input Path") + "/bulk_comments/columns"
 print(f"output_path: {output_path}")
 
