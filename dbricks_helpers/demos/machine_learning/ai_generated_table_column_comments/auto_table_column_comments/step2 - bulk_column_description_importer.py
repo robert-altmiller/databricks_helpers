@@ -10,7 +10,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # DBTITLE 1,Setup Databricks Widgets
 dbutils.widgets.text("Input Path", "", "Enter Base Volumes Path (Mandatory):")
-dbutils.widgets.dropdown("Always Update Comments", choices=["true", "false"], defaultValue="true", label="Always Update Comments (Optional):")
 
 # COMMAND ----------
 

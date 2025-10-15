@@ -40,7 +40,7 @@ display(table_descriptions)
 # COMMAND ----------
 
 # DBTITLE 1,Prepare for Unity Catalog Table Description Updates
-def prepare_table_descriptions_for_uc_updates(table_descriptions: DataFrame, always_update: bool = True) -> DataFrame:
+def prepare_table_descriptions_for_uc_updates(table_descriptions: DataFrame) -> DataFrame:
     """
     Prepare a DataFrame of table-level comments for Unity Catalog updates.
 
@@ -52,9 +52,6 @@ def prepare_table_descriptions_for_uc_updates(table_descriptions: DataFrame, alw
             - table_catalog (str)
             - table_name (str)
             - table_schema (str)
-        always_update (bool):
-            - If False, only include rows where replace_comment = True.
-            - If True, include all rows regardless of replace_comment.
 
     Returns:
         DataFrame: Original columns plus:
@@ -77,7 +74,7 @@ def prepare_table_descriptions_for_uc_updates(table_descriptions: DataFrame, alw
 
 
 # Prepare table description updates for UC catalog tables
-cleaned_table_descriptions = prepare_table_descriptions_for_uc_updates(table_descriptions, always_update=always_update)
+cleaned_table_descriptions = prepare_table_descriptions_for_uc_updates(table_descriptions)
 display(cleaned_table_descriptions)
 
 # COMMAND ----------

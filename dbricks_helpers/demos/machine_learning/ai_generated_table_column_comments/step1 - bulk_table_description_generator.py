@@ -19,6 +19,7 @@ dbutils.widgets.text("Output Path", "", "Enter Base Volumes Path (Mandatory):")
 dbutils.widgets.text("Model Serving Endpoint Name", "databricks-meta-llama-3-3-70b-instruct", "Model Serving Endpoint Name (Mandatory):")
 dbutils.widgets.text("Sample Data Limit", "5", "Sample Data Limit (Mandatory):")
 dbutils.widgets.dropdown("Always Update Comments", choices=["true", "false"], defaultValue="true", label="Always Update Comments (Optional):")
+dbutils.widgets.dropdown("Prompt Return Length", choices=["100", "150", "200", "250", "300", "350", "400"], defaultValue="200", label="Prompt Return Length (Mandatory):")
 
 # COMMAND ----------
 
@@ -46,6 +47,10 @@ print(f"endpoint_name: {endpoint_name}")
 # Sample Data Limit specifies how many rows of data to return per table
 data_limit = int(dbutils.widgets.get("Sample Data Limit"))
 print(f"data_limit: {data_limit}")
+
+# Prompt return table description length
+prompt_return_length = int(dbutils.widgets.get("Prompt Return Length"))
+print(f"prompt_return_length: {prompt_return_length}")
 
 # Overwrite AI-generated table descriptions
 always_update = dbutils.widgets.get("Always Update Comments").lower() == "true"
@@ -100,7 +105,7 @@ def get_table_metadata(catalog: str, schema: str, table: str, data_limit: int = 
 # COMMAND ----------
 
 # DBTITLE 1,Build Table Dynamic Table Prompt
-def build_table_prompt(meta: dict) -> str:
+def build_table_prompt(meta: dict, prompt_return_length: int) -> str:
     """
     Build an AI prompt for describing a table using schema and sample data.
     Args:
@@ -111,50 +116,56 @@ def build_table_prompt(meta: dict) -> str:
             - schema_str (str)
             - row_count (int)
             - samples (list[dict])
+        prompt_return_length (int): Maximum number of words in the AI-generated description.
     Returns:
         str: A string prompt suitable for passing to ai_query.
     """
     sample_preview = str(meta["samples"])
-    return (
-        f'Describe the table "{meta["table"]}" in schema "{meta["schema"]}" '
-        f'within catalog "{meta["catalog"]}". '
+    prompt = (
+        f'This description will be stored as a Unity Catalog table description. '
+        f'Write a clear, concise, single-paragraph summary not exceeding {prompt_return_length} words. '
+        f'Describe the table "{meta["table"]}" in schema "{meta["schema"]}" within catalog "{meta["catalog"]}". '
         f'The schema is: {meta["schema_str"]}. '
         f'Here are some sample rows: {sample_preview}. '
-        f'Please generate a detailed but concise paragraph explaining what kind of information '
-        f'this table contains and how it might be used for analysis. '
-        f'Avoid repeating schema/catalog details explicitly.'
+        f'Explain what kind of information this table contains and how it might be used for analysis. '
+        f'Avoid repeating schema or catalog names in the output.'
     )
+    return prompt
 
 
 # Get the table metadata prompt for AI-Query
-# prompt = build_table_prompt(table_metadata)
+# prompt = build_table_prompt(table_metadata, prompt_return_length)
 # print(prompt)
 
 # COMMAND ----------
 
 # DBTITLE 1,Get Table Descriptions
-def get_table_description_ai(table_metadata: dict, endpoint_name: str) -> str:
+def get_table_description_ai(table_metadata: dict, endpoint_name: str, prompt_return_length: int) -> str:
     """
     Generate a table description using ai_query given metadata.
     Args:
         table_metadata (dict): Table metadata dictionary from get_table_metadata.
         endpoint_name (str): The registered AI endpoint name used with ai_query.
+        prompt_return_length (int): Maximum number of words in the AI-generated description.
     Returns:
         str: AI-generated description of the table.
     """
-    prompt = build_table_prompt(table_metadata)
+    prompt = build_table_prompt(table_metadata, prompt_return_length)
     query = f"SELECT ai_query('{endpoint_name}', :prompt) AS description"
     return spark.sql(query, args={"prompt": prompt}).collect()[0].description
 
 
 # Get the table metadata description using prompt with AI-Query
-# table_description = get_table_description_ai(table_metadata, endpoint_name)
+# table_description = get_table_description_ai(table_metadata, endpoint_name, prompt_return_length)
 # print(table_description)
 
 # COMMAND ----------
 
 # DBTITLE 1,Get Table Descriptions Using AI Query
-def get_table_descriptions(catalog: str, schema: str = None, table: str = None, data_limit: int = 1, endpoint_name: str = None, max_workers: int = 8, replace_comment = False):
+def get_table_descriptions(catalog: str, schema: str = None, table: str = None, data_limit: int = 1, 
+                           endpoint_name: str = None, max_workers: int = 8, replace_comment: bool = False, 
+                           prompt_return_length: int = 200
+    ) -> DataFrame:
     """
     Generate AI-assisted descriptions for tables and return them as a Spark DataFrame.
     This function:
@@ -170,6 +181,7 @@ def get_table_descriptions(catalog: str, schema: str = None, table: str = None, 
         endpoint_name (str, optional): AI endpoint name registered in Databricks. Required.
         max_workers (int, optional): Number of parallel workers for AI calls. Default = 8.
         replace_comment (bool, optional): Replace existing comment with AI-generated description. Default = False.
+        prompt_return_length (int): Maximum number of words in the AI-generated description.
     Returns:
         DataFrame: Spark DataFrame with schema:
             - table_catalog (str)
@@ -200,13 +212,18 @@ def get_table_descriptions(catalog: str, schema: str = None, table: str = None, 
 
     def process_table(t, replace_comment):
         try:
-            table_metadata = get_table_metadata(
-                t["table_catalog"], t["table_schema"], t["table_name"], data_limit
-            )
-            ai_desc = get_table_description_ai(table_metadata, endpoint_name)
+            # Determine if we should actually generate a new description
+            should_generate_new_comment = replace_comment or (t["comment"] is None or len(t["comment"]) == 0)
             
-            if not replace_comment:
-              replace_comment = (t["comment"] is None or len(t["comment"]) == 0)
+            if should_generate_new_comment:
+                table_metadata = get_table_metadata(
+                    t["table_catalog"], t["table_schema"], t["table_name"], data_limit
+                )
+                ai_desc = get_table_description_ai(table_metadata, endpoint_name, prompt_return_length)
+            else: ai_desc = None
+
+            # if not replace_comment:
+            #   replace_comment = (t["comment"] is None or len(t["comment"]) == 0)
             
             return Row(
                 table_catalog=t["table_catalog"],
@@ -240,7 +257,11 @@ def get_table_descriptions(catalog: str, schema: str = None, table: str = None, 
 
 
 # Get table descriptions for catalog, schema, tables
-table_descriptions = get_table_descriptions(catalog, schema = schema, table = table, data_limit = data_limit, endpoint_name = endpoint_name, max_workers = default_parallelism, replace_comment = always_update)
+table_descriptions = get_table_descriptions(
+        catalog, schema = schema, table = table, data_limit = data_limit, 
+        endpoint_name = endpoint_name, max_workers = default_parallelism, 
+        replace_comment = always_update, prompt_return_length=prompt_return_length
+)
 display(table_descriptions)
 
 # COMMAND ----------

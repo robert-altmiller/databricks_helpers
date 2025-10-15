@@ -17,6 +17,7 @@ dbutils.widgets.text("Output Path", "", "Enter Base Volumes Path (Mandatory):")
 dbutils.widgets.text("Model Serving Endpoint Name", "databricks-meta-llama-3-3-70b-instruct", "Model Serving Endpoint Name (Mandatory):")
 dbutils.widgets.text("Sample Data Limit", "5", "Sample Data Limit (Mandatory):")
 dbutils.widgets.dropdown("Always Update Comments", choices=["true", "false"], defaultValue="true", label="Always Update Comments (Optional):")
+dbutils.widgets.dropdown("Prompt Return Length", choices=["10", "20", "30", "40", "50"], defaultValue="40", label="Prompt Return Length (Mandatory):")
 
 # COMMAND ----------
 
@@ -45,7 +46,11 @@ print(f"endpoint_name: {endpoint_name}")
 data_limit = int(dbutils.widgets.get("Sample Data Limit"))
 print(f"data_limit: {data_limit}")
 
-# Overwrite AI-generated table descriptions
+# Prompt return table column comment length
+prompt_return_length = int(dbutils.widgets.get("Prompt Return Length"))
+print(f"prompt_return_length: {prompt_return_length}")
+
+# Overwrite AI-generated table column comments
 always_update = dbutils.widgets.get("Always Update Comments").lower() == "true"
 print(f"always_update: {always_update}")
 
@@ -120,8 +125,7 @@ print(sample_data)
 
 # COMMAND ----------
 
-# DBTITLE 1,Get Column Comments (Multi-Threaded)
-def describe_single_column(col: Row, samples: dict, endpoint_name: str, replace_comment: bool) -> Row:
+def describe_single_column(col: Row, samples: dict, endpoint_name: str, replace_comment: bool, prompt_return_length: int) -> Row:
     """
     Generate an AI-assisted description for a single column.
     Args:
@@ -133,6 +137,7 @@ def describe_single_column(col: Row, samples: dict, endpoint_name: str, replace_
         endpoint_name (str): The registered AI endpoint name used for generating the description
                              via the ai_query function.
         replace_comment: Whether to replace the existing comment with the new one.
+        prompt_return_length (int): Maximum number of words in the AI-generated description.
     Returns:
         Row: A Spark Row containing:
              - table_catalog (str): Catalog the column belongs to.
@@ -144,17 +149,34 @@ def describe_single_column(col: Row, samples: dict, endpoint_name: str, replace_
              - replace_comment (bool): Whether the existing comment is missing/empty.
              - new_comment (str): Newly generated one-sentence description of the column.
     """
+    # Skip AI generation if always_update is False and column already has a comment
+    should_generate = replace_comment or col.replace_comment
+    if not should_generate:
+        return Row(
+            table_catalog=col.table_catalog,
+            table_schema=col.table_schema,
+            table_name=col.table_name,
+            column_name=col.column_name,
+            ordinal_position=col.ordinal_position,
+            existing_comment=col.existing_comment,
+            replace_comment=False,
+            new_comment=None
+        )
+
     key = (col.table_catalog, col.table_schema, col.table_name)
     sample_rows = samples.get(key, [])
     sample_text = str(sample_rows[:3])  # Use only first 3 rows for brevity
 
-    # Prompt construction for AI model
     prompt = (
-        f'Generate a one-sentence description of the type of information in column "{col.column_name}" '
-        f'from table "{col.table_name}" in schema "{col.table_schema}" within catalog "{col.table_catalog}". '
+        f'This description will be stored as a Unity Catalog table column comment. '
+        f'Write a detailed, single-sentence description of approximately {prompt_return_length} words '
+        f'for the column "{col.column_name}" from the table "{col.table_name}" in schema "{col.table_schema}" '
+        f'within catalog "{col.table_catalog}". '
+        f'This description should clearly explain what kind of information the column contains and its purpose. '
         f'The column data type is "{col.data_type}". '
-        f'Here are some sample rows from the table: {sample_text}. '
-        f'This will be used as a column description, so avoid mentioning schema or catalog.'
+        f'Use the following sample rows for context: {sample_text}. '
+        f'Keep the description professional and concise, suitable for a data dictionary. '
+        f'Do not mention schema or catalog names in the output.'
     )
     ai_sql = f"SELECT ai_query('{endpoint_name}', :prompt) AS new_comment"
     new_comment = spark.sql(ai_sql, args={"prompt": prompt}).collect()[0].new_comment
@@ -169,12 +191,16 @@ def describe_single_column(col: Row, samples: dict, endpoint_name: str, replace_
         column_name=col.column_name,
         ordinal_position=col.ordinal_position,
         existing_comment=col.existing_comment,
-        replace_comment= replace_comment,
+        replace_comment=replace_comment,
         new_comment=new_comment
     )
 
 
-def get_column_comments(catalog: str, limit: int, schema: str = None, table: str = None, max_workers: int = 8, replace_comment = False) -> DataFrame:
+def get_column_comments(
+    catalog: str, limit: int, schema: str = None, 
+    table: str = None, max_workers: int = 8, replace_comment: bool = False, 
+    prompt_return_length: int = 40
+) -> DataFrame:
     """
     Generate AI-assisted column descriptions for all columns in a catalog/schema/table.
     This function:
@@ -189,6 +215,7 @@ def get_column_comments(catalog: str, limit: int, schema: str = None, table: str
         schema (str, optional): Restrict to a single schema. Defaults to "" (all schemas).
         table (str, optional): Restrict to a single table. Defaults to "" (all tables).
         max_workers (int, optional): Number of threads for parallel execution. Defaults to 8.
+        prompt_return_length (int): Maximum number of words in the AI-generated description.
     Returns:
         DataFrame: A Spark DataFrame with the following schema:
             - table_catalog (str)
@@ -202,7 +229,6 @@ def get_column_comments(catalog: str, limit: int, schema: str = None, table: str
     """
     # Step 1: get sample rows
     samples = get_sample_data(catalog, limit, schema, table)
-
 
     # Step 2: get column metadata
     query = f"""
@@ -226,7 +252,7 @@ def get_column_comments(catalog: str, limit: int, schema: str = None, table: str
     # Step 3: Parallelize description calls
     rows_out = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(describe_single_column, col, samples, endpoint_name, replace_comment) for col in columns]
+        futures = [executor.submit(describe_single_column, col, samples, endpoint_name, replace_comment, prompt_return_length) for col in columns]
         for f in as_completed(futures):
             rows_out.append(f.result())
 
@@ -246,7 +272,12 @@ def get_column_comments(catalog: str, limit: int, schema: str = None, table: str
 
 
 # Get Column Comments
-commented_columns = get_column_comments(catalog, data_limit, schema, table, max_workers = default_parallelism, replace_comment = always_update)
+commented_columns = get_column_comments(
+    catalog, data_limit, schema,
+    table, max_workers=default_parallelism,
+    replace_comment=always_update,
+    prompt_return_length=prompt_return_length
+)
 display(commented_columns)
 
 # COMMAND ----------
