@@ -229,7 +229,7 @@ def get_table_descriptions(catalog: str, schema: str = None, table: str = None, 
                 table_catalog=t["table_catalog"],
                 table_schema=t["table_schema"],
                 table_name=t["table_name"],
-                replace_comment=replace_comment,
+                replace_comment=replace_comment or should_generate_new_comment,
                 existing_comment=t["comment"] if t["comment"] else "",
                 new_comment=ai_desc
             )
