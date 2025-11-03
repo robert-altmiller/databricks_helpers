@@ -18,6 +18,7 @@ dbutils.widgets.text("Table", "", "Enter Table Name (Optional):")
 dbutils.widgets.text("Output Path", "", "Enter Base Volumes Path (Mandatory):")
 dbutils.widgets.text("Model Serving Endpoint Name", "databricks-meta-llama-3-3-70b-instruct", "Model Serving Endpoint Name (Mandatory):")
 dbutils.widgets.text("Sample Data Limit", "5", "Sample Data Limit (Mandatory):")
+dbutils.widgets.text("Sample Max Cell Chars", "1000", "Sample Max Cell Chars (Mandatory):")
 dbutils.widgets.dropdown("Always Update Comments", choices=["true", "false"], defaultValue="true", label="Always Update Comments (Optional):")
 dbutils.widgets.dropdown("Prompt Return Length", choices=["100", "150", "200", "250", "300", "350", "400"], defaultValue="200", label="Prompt Return Length (Mandatory):")
 
@@ -48,6 +49,10 @@ print(f"endpoint_name: {endpoint_name}")
 data_limit = int(dbutils.widgets.get("Sample Data Limit"))
 print(f"data_limit: {data_limit}")
 
+# Sample Max Cell Chars specifies how many character to return per row-col.
+max_cell_chars = int(dbutils.widgets.get("Sample Max Cell Chars"))
+print(f"max_cell_chars: {max_cell_chars}")
+
 # Prompt return table description length
 prompt_return_length = int(dbutils.widgets.get("Prompt Return Length"))
 print(f"prompt_return_length: {prompt_return_length}")
@@ -67,39 +72,74 @@ print(f"Number of executors: {default_parallelism}")
 
 # COMMAND ----------
 
-def get_table_metadata(catalog: str, schema: str, table: str, data_limit: int = 1) -> dict:
+# DBTITLE 1,Get Table Metadata
+def get_table_metadata(catalog: str, schema: str, table: str, data_limit: int = 1, max_cell_chars = 1000) -> dict:
     """
     Fetch schema information, row count, and sample rows for a given table.
+    Truncates only *individual column values* that exceed a safe character limit to prevent
+    overly long AI prompts (e.g., large array or JSON string columns).
     Args:
         catalog (str): The catalog name.
         schema (str): The schema/database name.
         table (str): The table name.
-        data_limit (int, optional): Number of sample rows to retrieve. Default = 5.
+        data_limit (int, optional): Number of sample rows to retrieve. Default = 1.
+        max_cell_chars (int, optional): Maximum number of characters per cell value. Default = 1000.
     Returns:
         dict: Dictionary containing:
             - catalog (str): Catalog name
             - schema (str): Schema name
             - table (str): Table name
             - schema_str (str): Comma-separated "col_name col_type" string
-            - row_count (int): Approximate row count (capped at 1M for performance)
-            - samples (list[dict]): List of sample rows (as Python dicts)
+            - samples (list[dict]): List of sample rows (as Python dicts),
+              where long individual cell values are safely truncated.
     """
+    # Load the table as a Spark DataFrame
     df = spark.table(f"{catalog}.{schema}.{table}")
-    # Schema
+    # Build a simple string representation of the table schema
     schema_str = ", ".join([f"{f.name} {f.dataType.simpleString()}" for f in df.schema.fields])
-    # Sample rows
-    samples = [row.asDict() for row in df.limit(data_limit).collect()]
+
+    # ------------------------------------------------------------------
+    # Safety configuration: 'max_cell_chars' parameter limits the number of 
+    # characters per *cell value* in sample data. This avoids large array or 
+    # string columns blowing up the AI prompt size.
+    # ------------------------------------------------------------------
+
+    # Initialize list for storing sample rows
+    samples = []
+
+    # Collect up to `data_limit` rows from the table
+    for row in df.limit(data_limit).collect():
+        rdict = {}
+
+        # Iterate through each column in the row
+        for col, val in row.asDict(recursive=True).items():
+            if val is None:
+                # Preserve null values as-is
+                rdict[col] = None
+            else:
+                val_str = str(val)
+
+                # Truncate only if individual value exceeds the configured limit
+                if len(val_str) > max_cell_chars:
+                    rdict[col] = val_str[:max_cell_chars] + " ...[truncated]"
+                else:
+                    rdict[col] = val_str
+
+        # Append the sanitized row to the sample list
+        samples.append(rdict)
+
+    # Return the metadata dictionary for this table
     return {
         "catalog": catalog,
         "schema": schema,
         "table": table,
         "schema_str": schema_str,
-        "samples": samples
+        "samples": samples,
     }
 
 
-# Get table metadata with a few sample rows based on data_limit
-# table_metadata = get_table_metadata(catalog, schema, table, data_limit = data_limit)
+# Get table metadata with a few sample rows based on data_limit and max cell chars.
+# table_metadata = get_table_metadata(catalog, schema, table, data_limit = data_limit, max_cell_chars = max_cell_chars)
 # print(table_metadata)
 
 # COMMAND ----------
@@ -164,7 +204,7 @@ def get_table_description_ai(table_metadata: dict, endpoint_name: str, prompt_re
 # DBTITLE 1,Get Table Descriptions Using AI Query
 def get_table_descriptions(catalog: str, schema: str = None, table: str = None, data_limit: int = 1, 
                            endpoint_name: str = None, max_workers: int = 8, replace_comment: bool = False, 
-                           prompt_return_length: int = 200
+                           prompt_return_length: int = 200, max_cell_chars: int = 1000
     ) -> DataFrame:
     """
     Generate AI-assisted descriptions for tables and return them as a Spark DataFrame.
@@ -182,6 +222,7 @@ def get_table_descriptions(catalog: str, schema: str = None, table: str = None, 
         max_workers (int, optional): Number of parallel workers for AI calls. Default = 8.
         replace_comment (bool, optional): Replace existing comment with AI-generated description. Default = False.
         prompt_return_length (int): Maximum number of words in the AI-generated description.
+        max_cell_chars (int): Maximum number of characters in the schema string. Default = 1000.
     Returns:
         DataFrame: Spark DataFrame with schema:
             - table_catalog (str)
@@ -217,7 +258,7 @@ def get_table_descriptions(catalog: str, schema: str = None, table: str = None, 
             
             if should_generate_new_comment:
                 table_metadata = get_table_metadata(
-                    t["table_catalog"], t["table_schema"], t["table_name"], data_limit
+                    t["table_catalog"], t["table_schema"], t["table_name"], data_limit, max_cell_chars
                 )
                 ai_desc = get_table_description_ai(table_metadata, endpoint_name, prompt_return_length)
             else: ai_desc = None
@@ -259,8 +300,9 @@ def get_table_descriptions(catalog: str, schema: str = None, table: str = None, 
 # Get table descriptions for catalog, schema, tables
 table_descriptions = get_table_descriptions(
         catalog, schema = schema, table = table, data_limit = data_limit, 
-        endpoint_name = endpoint_name, max_workers = default_parallelism, 
-        replace_comment = always_update, prompt_return_length=prompt_return_length
+        endpoint_name = endpoint_name, max_workers = max_workers, 
+        replace_comment = always_update, prompt_return_length=prompt_return_length,
+        max_cell_chars = max_cell_chars
 )
 display(table_descriptions)
 

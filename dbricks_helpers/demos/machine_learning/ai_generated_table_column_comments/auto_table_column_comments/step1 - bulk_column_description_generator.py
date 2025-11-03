@@ -16,6 +16,7 @@ dbutils.widgets.text("Table", "", "Enter Table Name (Optional):")
 dbutils.widgets.text("Output Path", "", "Enter Base Volumes Path (Mandatory):")
 dbutils.widgets.text("Model Serving Endpoint Name", "databricks-meta-llama-3-3-70b-instruct", "Model Serving Endpoint Name (Mandatory):")
 dbutils.widgets.text("Sample Data Limit", "5", "Sample Data Limit (Mandatory):")
+dbutils.widgets.text("Sample Max Cell Chars", "1000", "Sample Max Cell Chars (Mandatory):")
 dbutils.widgets.dropdown("Always Update Comments", choices=["true", "false"], defaultValue="true", label="Always Update Comments (Optional):")
 dbutils.widgets.dropdown("Prompt Return Length", choices=["10", "20", "30", "40", "50"], defaultValue="40", label="Prompt Return Length (Mandatory):")
 
@@ -46,6 +47,10 @@ print(f"endpoint_name: {endpoint_name}")
 data_limit = int(dbutils.widgets.get("Sample Data Limit"))
 print(f"data_limit: {data_limit}")
 
+# Sample Max Cell Chars specifies how many character to return per row-col.
+max_cell_chars = int(dbutils.widgets.get("Sample Max Cell Chars"))
+print(f"max_cell_chars: {max_cell_chars}")
+
 # Prompt return table column comment length
 prompt_return_length = int(dbutils.widgets.get("Prompt Return Length"))
 print(f"prompt_return_length: {prompt_return_length}")
@@ -66,23 +71,28 @@ print(f"Number of executors: {default_parallelism}")
 # COMMAND ----------
 
 # DBTITLE 1,Get Sample Data (Multi-Threaded)
-def get_sample_data(catalog: str, limit, schema: str = None, table: str = None, max_workers: int = 8) -> dict:
+def get_sample_data(catalog: str, limit: int, schema: str = None, table: str = None, max_workers: int = 8, max_cell_chars: int = 1000) -> dict:
     """
     Fetch sample rows from one or more tables within a catalog (and optionally schema/table),
     using multi-threading for faster parallel execution.
+    Truncates only *individual column values* that exceed a safe character limit to prevent
+    oversized AI prompts (e.g., large array or JSON string columns).
     Args:
-        catalog (str): The name of the catalog to query.
+        catalog (str): The catalog name to query.
         limit (int): Maximum number of rows to fetch from each table.
-        schema (str, optional): If provided, restricts search to a single schema. Defaults to "" (all schemas).
-        table (str, optional): If provided along with schema, restricts search to a single table. Defaults to "".
-        max_workers (int): Number of threads to use for parallel fetching. Defaults to 8.
+        schema (str, optional): Restrict search to a single schema if provided.
+        table (str, optional): Restrict search to a single table if provided.
+        max_workers (int, optional): Number of threads for parallel fetching. Default = 8.
+        max_cell_chars (int, optional): Maximum number of characters allowed per cell value. 
+            Default = 1000. Long individual cell values are truncated to this length 
+            to avoid exceeding AI model token limits.
     Returns:
         dict: Dictionary keyed by (catalog, schema, table) with values as:
-              - List of row dictionaries if data was successfully retrieved.
-              - List with a single {"error": "..."} dictionary if query failed.
+              - List of row dictionaries containing truncated sample data if successful.
+              - List with a single {"error": "..."} dictionary if data retrieval failed.
     """
+
     sample_data = {}
-    # Step 1: Build SQL query to list tables from information_schema
     query = f"""
         SELECT table_catalog, table_schema, table_name
         FROM system.information_schema.tables
@@ -98,18 +108,38 @@ def get_sample_data(catalog: str, limit, schema: str = None, table: str = None, 
         args={"catalog": catalog, "schema": schema, "table": table}
     ).collect()
 
-    # Worker function to fetch data for a single table
+    # ------------------------------------------------------------------
+    # Worker function to fetch data for a single table.
+    # Each individual column value is truncated if it exceeds `max_cell_chars`.
+    # ------------------------------------------------------------------
     def fetch_table_data(t):
         full_table_name = f"{t.table_catalog}.{t.table_schema}.{t.table_name}"
         data_query = f"SELECT * FROM {full_table_name} LIMIT {limit}"
 
         try:
-            rows = [row.asDict() for row in spark.sql(data_query).collect()]
-            return (t.table_catalog, t.table_schema, t.table_name), rows
+            rows_raw = [row.asDict(recursive=True) for row in spark.sql(data_query).collect()]
+            rows_clean = []
+
+            for row_dict in rows_raw:
+                clean_row = {}
+                for col, val in row_dict.items():
+                    if val is None:
+                        clean_row[col] = None
+                    else:
+                        val_str = str(val)
+                        # Truncate overly long individual column values only
+                        if len(val_str) > max_cell_chars:
+                            clean_row[col] = val_str[:max_cell_chars] + " ...[truncated]"
+                        else:
+                            clean_row[col] = val_str
+                rows_clean.append(clean_row)
+
+            return (t.table_catalog, t.table_schema, t.table_name), rows_clean
+
         except Exception as e:
+            # Handle query or permission errors gracefully
             return (t.table_catalog, t.table_schema, t.table_name), [{"error": str(e)}]
 
-    # Step 2: Run in parallel with ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_table = {executor.submit(fetch_table_data, t): t for t in tables}
         for future in as_completed(future_to_table):
@@ -119,12 +149,13 @@ def get_sample_data(catalog: str, limit, schema: str = None, table: str = None, 
     return sample_data
 
 
-# Generate table sample data for column comment AI generation
-sample_data = get_sample_data(catalog, data_limit, schema, table, max_workers = default_parallelism)
-print(sample_data)
+# Get table metadata with a few sample rows based on data_limit and max cell chars.
+# sample_data = get_sample_data(catalog="gdp_stage", limit=3, schema="allocation", table=table, max_workers=default_parallelism, max_cell_chars=max_cell_chars)
+# print(sample_data)
 
 # COMMAND ----------
 
+# DBTITLE 1,Get Column Comments (Multi-Threaded)
 def describe_single_column(col: Row, samples: dict, endpoint_name: str, replace_comment: bool, prompt_return_length: int) -> Row:
     """
     Generate an AI-assisted description for a single column.
@@ -199,7 +230,7 @@ def describe_single_column(col: Row, samples: dict, endpoint_name: str, replace_
 def get_column_comments(
     catalog: str, limit: int, schema: str = None, 
     table: str = None, max_workers: int = 8, replace_comment: bool = False, 
-    prompt_return_length: int = 40
+    prompt_return_length: int = 40, max_cell_chars: int = 1000
 ) -> DataFrame:
     """
     Generate AI-assisted column descriptions for all columns in a catalog/schema/table.
@@ -216,6 +247,7 @@ def get_column_comments(
         table (str, optional): Restrict to a single table. Defaults to "" (all tables).
         max_workers (int, optional): Number of threads for parallel execution. Defaults to 8.
         prompt_return_length (int): Maximum number of words in the AI-generated description.
+        max_cell_chars (int): Maximum number of characters in each cell of the sample rows.
     Returns:
         DataFrame: A Spark DataFrame with the following schema:
             - table_catalog (str)
@@ -228,7 +260,8 @@ def get_column_comments(
             - new_comment (str)
     """
     # Step 1: get sample rows
-    samples = get_sample_data(catalog, limit, schema, table)
+    samples = get_sample_data(catalog, limit, schema, table, max_workers, max_cell_chars)
+    print(samples)
 
     # Step 2: get column metadata
     query = f"""
@@ -276,7 +309,8 @@ commented_columns = get_column_comments(
     catalog, data_limit, schema,
     table, max_workers=default_parallelism,
     replace_comment=always_update,
-    prompt_return_length=prompt_return_length
+    prompt_return_length=prompt_return_length,
+    max_cell_chars=max_cell_chars
 )
 display(commented_columns)
 
