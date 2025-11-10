@@ -17,7 +17,7 @@ dbutils.widgets.text("Schema", "", "Enter Schema Name (Optional):")
 dbutils.widgets.text("Table", "", "Enter Table Name (Optional):")
 dbutils.widgets.text("Output Path", "", "Enter Base Volumes Path (Mandatory):")
 dbutils.widgets.text("Model Serving Endpoint Name", "databricks-meta-llama-3-3-70b-instruct", "Model Serving Endpoint Name (Mandatory):")
-dbutils.widgets.text("Sample Data Limit", "5", "Sample Data Limit (Mandatory):")
+dbutils.widgets.text("Sample Data Limit", "2", "Sample Data Limit (Mandatory):")
 dbutils.widgets.text("Sample Max Cell Chars", "1000", "Sample Max Cell Chars (Mandatory):")
 dbutils.widgets.dropdown("Always Update Comments", choices=["true", "false"], defaultValue="true", label="Always Update Comments (Optional):")
 dbutils.widgets.dropdown("Prompt Return Length", choices=["100", "150", "200", "250", "300", "350", "400"], defaultValue="200", label="Prompt Return Length (Mandatory):")
@@ -300,7 +300,7 @@ def get_table_descriptions(catalog: str, schema: str = None, table: str = None, 
 # Get table descriptions for catalog, schema, tables
 table_descriptions = get_table_descriptions(
         catalog, schema = schema, table = table, data_limit = data_limit, 
-        endpoint_name = endpoint_name, max_workers = max_workers, 
+        endpoint_name = endpoint_name, max_workers = default_parallelism, 
         replace_comment = always_update, prompt_return_length=prompt_return_length,
         max_cell_chars = max_cell_chars
 )

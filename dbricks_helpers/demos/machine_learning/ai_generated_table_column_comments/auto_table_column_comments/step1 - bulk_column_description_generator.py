@@ -261,7 +261,6 @@ def get_column_comments(
     """
     # Step 1: get sample rows
     samples = get_sample_data(catalog, limit, schema, table, max_workers, max_cell_chars)
-    print(samples)
 
     # Step 2: get column metadata
     query = f"""
