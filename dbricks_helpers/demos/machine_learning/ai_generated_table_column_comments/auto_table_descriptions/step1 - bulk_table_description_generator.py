@@ -20,7 +20,7 @@ dbutils.widgets.text("Model Serving Endpoint Name", "databricks-meta-llama-3-3-7
 dbutils.widgets.text("Sample Data Limit", "2", "Sample Data Limit (Mandatory):")
 dbutils.widgets.text("Sample Max Cell Chars", "1000", "Sample Max Cell Chars (Mandatory):")
 dbutils.widgets.dropdown("Always Update Comments", choices=["true", "false"], defaultValue="true", label="Always Update Comments (Optional):")
-dbutils.widgets.dropdown("Prompt Return Length", choices=["100", "150", "200", "250", "300", "350", "400"], defaultValue="200", label="Prompt Return Length (Mandatory):")
+dbutils.widgets.dropdown("Prompt Return Length", choices=["100", "150", "200", "250", "300", "350", "400", "450", "500", "550", "600"], defaultValue="200", label="Prompt Return Length (Mandatory):")
 
 # COMMAND ----------
 
@@ -139,8 +139,8 @@ def get_table_metadata(catalog: str, schema: str, table: str, data_limit: int = 
 
 
 # Get table metadata with a few sample rows based on data_limit and max cell chars.
-# table_metadata = get_table_metadata(catalog, schema, table, data_limit = data_limit, max_cell_chars = max_cell_chars)
-# print(table_metadata)
+table_metadata = get_table_metadata(catalog, schema, table, data_limit = data_limit, max_cell_chars = max_cell_chars)
+print(table_metadata)
 
 # COMMAND ----------
 
@@ -162,20 +162,67 @@ def build_table_prompt(meta: dict, prompt_return_length: int) -> str:
     """
     sample_preview = str(meta["samples"])
     prompt = (
-        f'This description will be stored as a Unity Catalog table description. '
-        f'Write a clear, concise, single-paragraph summary not exceeding {prompt_return_length} words. '
-        f'Describe the table "{meta["table"]}" in schema "{meta["schema"]}" within catalog "{meta["catalog"]}". '
-        f'The schema is: {meta["schema_str"]}. '
-        f'Here are some sample rows: {sample_preview}. '
-        f'Explain what kind of information this table contains and how it might be used for analysis. '
-        f'Avoid repeating schema or catalog names in the output.'
+
+        f'Provide the business context / definition, related business processes, and how to use / business enablement for the Table Metadata below using the format below:\n\n'
+        
+        f'**BUSINESS CONTEXT / DEFINITION**:\n'
+        f'[Example Format: - This data provides information about customer choices for in-season products, including details about product distribution, allocation, and lifecycle. It helps businesses understand how products are being distributed, allocated, and managed throughout their lifecycle, enabling informed decisions about product offerings, inventory management, and customer satisfaction.]\n'
+        f'**RELATED BUSINESS PROCESSES**:\n'
+        f'[Example Format: - Product Distribution and Allocation: This data supports the process of distributing products to various channels and allocating them to specific customer groups.]\n'
+        f'**HOW TO USE / BUSINESS ENABLEMENT**:\n'
+        f'[Example Format: - Use this data to analyze product distribution patterns and identify areas for improvement in allocation and inventory management..]\n'
+
+        f'\nStrict Requirements:\n\n'
+        f'- Use concise business language suitable for non-technical business users and avoid technical jargon in all the descriptions above.\n'
+        f'- Do not use catalog names, schema names, table names, or data types in any of the descriptions above.\n'
+        f'- The entire output should be <= {prompt_return_length} words in all the descriptions above.\n'
+
+        f'\nTable Metadata:\n\n'
+        f'- The table "{meta["table"]}" is in schema "{meta["schema"]}" within catalog "{meta["catalog"]}".\n'
+        f'- The table columns are {meta["schema_str"]}.\n'
+        f'- The sample data is: {sample_preview}.\n'
     )
     return prompt
 
 
 # Get the table metadata prompt for AI-Query
-# prompt = build_table_prompt(table_metadata, prompt_return_length)
-# print(prompt)
+prompt = build_table_prompt(table_metadata, prompt_return_length)
+print(prompt)
+
+# COMMAND ----------
+
+# DBTITLE 1,Build Table Dynamic Table Prompt (Original)
+# def build_table_prompt(meta: dict, prompt_return_length: int) -> str:
+#     """
+#     Build an AI prompt for describing a table using schema and sample data.
+#     Args:
+#         meta (dict): Dictionary returned from get_table_metadata containing:
+#             - catalog (str)
+#             - schema (str)
+#             - table (str)
+#             - schema_str (str)
+#             - row_count (int)
+#             - samples (list[dict])
+#         prompt_return_length (int): Maximum number of words in the AI-generated description.
+#     Returns:
+#         str: A string prompt suitable for passing to ai_query.
+#     """
+#     sample_preview = str(meta["samples"])
+#     prompt = (
+#         f'This description will be stored as a Unity Catalog table description. '
+#         f'Write a clear, concise, single-paragraph summary not exceeding {prompt_return_length} words. '
+#         f'Describe the table "{meta["table"]}" in schema "{meta["schema"]}" within catalog "{meta["catalog"]}". '
+#         f'The schema is: {meta["schema_str"]}. '
+#         f'Here are some sample rows: {sample_preview}. '
+#         f'Explain what kind of information this table contains and how it might be used for analysis. '
+#         f'Avoid repeating schema or catalog names in the output.'
+#     )
+#     return prompt
+
+
+# # # Get the table metadata prompt for AI-Query
+# # # prompt = build_table_prompt(table_metadata, prompt_return_length)
+# # # print(prompt)
 
 # COMMAND ----------
 
