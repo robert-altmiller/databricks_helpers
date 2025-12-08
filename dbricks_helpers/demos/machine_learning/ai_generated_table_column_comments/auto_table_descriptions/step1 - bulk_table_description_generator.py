@@ -165,11 +165,11 @@ def build_table_prompt(meta: dict, prompt_return_length: int) -> str:
 
         f'Provide the business context / definition, related business processes, and how to use / business enablement for the Table Metadata below using the format below:\n\n'
         
-        f'**BUSINESS CONTEXT / DEFINITION**:\n'
+        f'**BUSINESS CONTEXT - DEFINITION**:\n'
         f'[Example Format: - This data provides information about customer choices for in-season products, including details about product distribution, allocation, and lifecycle. It helps businesses understand how products are being distributed, allocated, and managed throughout their lifecycle, enabling informed decisions about product offerings, inventory management, and customer satisfaction.]\n'
         f'**RELATED BUSINESS PROCESSES**:\n'
         f'[Example Format: - Product Distribution and Allocation: This data supports the process of distributing products to various channels and allocating them to specific customer groups.]\n'
-        f'**HOW TO USE / BUSINESS ENABLEMENT**:\n'
+        f'**HOW TO USE - BUSINESS ENABLEMENT**:\n'
         f'[Example Format: - Use this data to analyze product distribution patterns and identify areas for improvement in allocation and inventory management..]\n'
 
         f'\nStrict Requirements:\n\n'
