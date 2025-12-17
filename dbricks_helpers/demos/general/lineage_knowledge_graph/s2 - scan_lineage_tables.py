@@ -29,7 +29,7 @@ lineage_tables_combined = "lineage_tables_combined"
 lineage_upstream_jobs = "lineage_upstream_jobs" 
 
 # Output path for index.html node edge graph
-output_path = "/Workspace/Users/raltmil@gap.com/knowledge_graph/index.html" 
+output_path = "/Workspace/Users/robert.altmiller@databricks.com/knowledge_graph/index.html" 
 
 # COMMAND ----------
 
