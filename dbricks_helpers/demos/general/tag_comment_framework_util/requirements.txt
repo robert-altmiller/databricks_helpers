@@ -1,0 +1,10 @@
+# Requirements for Tag Comment Framework
+# Install with: pip install -r requirements.txt
+
+# Excel file reading
+openpyxl>=3.1.0
+
+# Note: The following are typically pre-installed in Databricks but listed here for reference
+# pyspark>=3.4.0  # Already available in Databricks
+# pandas>=1.5.0   # Already available in Databricks
+

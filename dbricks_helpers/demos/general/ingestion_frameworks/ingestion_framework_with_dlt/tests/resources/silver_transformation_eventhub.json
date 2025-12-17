@@ -1,0 +1,14 @@
+[
+    {
+        "target_table": "iot_cdc",
+        "select_exp": [
+            "battery_level",
+            "c02_level",
+            "cca2",
+            "cca3",
+            "device_id",
+            "device_name",
+            "humidity"
+        ]
+    }
+]

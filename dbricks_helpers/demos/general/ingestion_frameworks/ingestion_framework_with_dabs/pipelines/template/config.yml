@@ -1,0 +1,60 @@
+# Pipeline Configuration Template
+# Copy this template to create new pipelines
+
+pipeline_name: template_pipeline
+description: Template pipeline for Loyalty 2.0
+pipeline_type: batch  # Options: batch, streaming
+
+# Catalog configuration
+catalog:
+  name: loyalty_dev
+  schemas:
+    - bronze
+    - silver
+    - gold
+
+# Cluster configuration
+cluster:
+  spark_version: 15.4.x-scala2.12
+  node_type_id: i3.xlarge
+  num_workers: 2
+  data_security_mode: USER_ISOLATION
+  autotermination_minutes: 30
+
+# Pipeline tasks
+tasks:
+  - task_key: bronze_ingestion
+    notebook_path: notebooks/bronze_ingestion.py
+    description: Ingest raw data to bronze layer
+    
+  - task_key: silver_transformation
+    notebook_path: notebooks/silver_transformation.py
+    description: Transform bronze to silver
+    depends_on:
+      - bronze_ingestion
+      
+  - task_key: gold_aggregation
+    notebook_path: notebooks/gold_aggregation.py
+    description: Create gold layer aggregations
+    depends_on:
+      - silver_transformation
+
+# Notifications
+notifications:
+  email: data-team@company.com
+  on_failure: true
+  on_success: false
+
+# Pipeline defaults
+pipeline_defaults:
+  max_concurrent_runs: 1
+  timeout_seconds: 3600
+  checkpoint_location: /tmp/checkpoints
+
+# Schedule (optional)
+schedule:
+  quartz_cron_expression: "0 0 2 * * ?"  # Daily at 2 AM
+  timezone_id: "America/New_York"
+  pause_status: "PAUSED"
+
+

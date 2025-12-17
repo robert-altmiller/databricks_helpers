@@ -1,0 +1,37 @@
+# Staging Environment Configuration
+
+environment: staging
+
+databricks:
+  host: https://e2-demo-field-eng.cloud.databricks.com
+  workspace_path: /Workspace/Shared/loyalty2.0/staging
+
+catalog:
+  name: loyalty_staging
+  schemas:
+    - bronze
+    - silver
+    - gold
+
+cluster:
+  spark_version: 15.4.x-scala2.12
+  node_type_id: i3.xlarge
+  num_workers: 3
+  data_security_mode: USER_ISOLATION
+  autotermination_minutes: 60
+
+notifications:
+  email: staging-team@company.com
+  on_failure: true
+  on_success: false
+
+security:
+  secret_scope: loyalty_staging_secrets
+
+# Pipeline defaults for staging
+pipeline_defaults:
+  max_concurrent_runs: 1
+  timeout_seconds: 7200
+  checkpoint_location: /mnt/staging/checkpoints
+
+

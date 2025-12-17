@@ -1,0 +1,61 @@
+bundle:
+  name: kafka_to_lakebase_bundle
+sync:
+  include:
+  - ./**
+variables:
+  catalog:
+    description: Unity Catalog name
+    default: dna_dev
+targets:
+  dev:
+    mode: development
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: dna_dev
+  staging:
+    mode: development
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: dna_dev
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: dna_dev
+resources:
+  jobs:
+    loyalty20_kafka_to_lakebase_streaming_pipeline:
+      name: '[Loyalty2.0] Kafka to Lakebase Streaming'
+      tasks:
+      - task_key: kafka_to_postgres_ingestion
+        notebook_task:
+          notebook_path: notebooks/kafka_to_postgres.py
+          source: WORKSPACE
+          base_parameters:
+            config_path: config/config.json
+        job_cluster_key: shared_cluster
+      - task_key: customer_stats_generator
+        notebook_task:
+          notebook_path: notebooks/customer_stats_generator.py
+          source: WORKSPACE
+          base_parameters:
+            config_path: config/config.json
+        job_cluster_key: shared_cluster
+      timeout_seconds: 0
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+        - data-team@company.com
+      job_clusters:
+      - job_cluster_key: shared_cluster
+        new_cluster:
+          spark_version: 15.4.x-scala2.12
+          node_type_id: Standard_DS3_v2
+          num_workers: 2
+          data_security_mode: USER_ISOLATION
+          spark_conf:
+            spark.jars.packages: org.postgresql:postgresql:42.7.1

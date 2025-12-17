@@ -1,0 +1,20 @@
+{
+    "uc_enabled": true,
+    "dbfs_path": null,
+    "uc_catalog_name": "gap_poc_kafka",
+    "serverless": true,
+    "cloud": null,
+    "dbr_version": null,
+    "onboarding_file_path": "demo/conf/onboarding.template",
+    "onboarding_files_dir_path": "file://Users/jomin.johny/Documents/GAP/dlt-meta-main/demo/",
+    "dlt_meta_schema": "dlt_meta_dataflowspecs_738054e416834d1a9a532e481cc0d928",
+    "bronze_schema": "gap_kafka_bronze",
+    "silver_schema": "dltmeta_silver_5a8bc46860974b91af164e93986696d4",
+    "onboard_layer": "bronze",
+    "bronze_dataflowspec_table": "bronze_dataflowspec",
+    "overwrite": true,
+    "version": "v1",
+    "env": "demo",
+    "import_author": "jomin.johny",
+    "update_paths": "True"
+}

@@ -1,0 +1,63 @@
+bundle:
+  name: gap_injection_with_kafka_bundle
+sync:
+  include:
+  - ./**
+variables:
+  catalog:
+    description: Unity Catalog name
+    default: dna_dev
+targets:
+  dev:
+    mode: development
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: dna_dev
+  staging:
+    mode: development
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: dna_dev
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: dna_dev
+resources:
+  jobs:
+    loyalty20_kafka_ingestion_to_bronze_pipeline:
+      name: '[Loyalty2.0] Kafka Ingestion to Bronze'
+      tasks:
+      - task_key: kafka_ingestion
+        notebook_task:
+          notebook_path: notebooks/kafka_ingestion_module.py
+          source: WORKSPACE
+          base_parameters:
+            kafka_topic: jomin_johny_fe_tech_onboarding_kafka_test-4
+            kafka_bootstrap_servers_secret_scope: oetrta
+            kafka_bootstrap_servers_secret_key: kafka-bootstrap-servers-plaintext
+            kafka_security_protocol: PLAINTEXT
+            starting_offsets: earliest
+            target_catalog: dna_dev
+            target_schema: raltmil
+            target_table: kafka_data_bronze
+            checkpoint_location: /tmp/kafka_checkpoint_gap
+            merge_schema: 'true'
+        job_cluster_key: shared_cluster
+      timeout_seconds: 0
+      max_concurrent_runs: 1
+      email_notifications:
+        on_failure:
+        - data-team@company.com
+      job_clusters:
+      - job_cluster_key: shared_cluster
+        new_cluster:
+          spark_version: 15.4.x-scala2.12
+          node_type_id: Standard_DS3_v2
+          num_workers: 2
+          data_security_mode: USER_ISOLATION
+          spark_conf:
+            spark.jars.packages: org.postgresql:postgresql:42.7.1

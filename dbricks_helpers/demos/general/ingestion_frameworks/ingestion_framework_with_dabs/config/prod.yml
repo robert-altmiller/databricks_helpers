@@ -1,0 +1,47 @@
+# Production Environment Configuration
+
+environment: prod
+
+databricks:
+  host: https://e2-demo-field-eng.cloud.databricks.com
+  workspace_path: /Workspace/Shared/loyalty2.0/prod
+
+catalog:
+  name: loyalty_prod
+  schemas:
+    - bronze
+    - silver
+    - gold
+
+cluster:
+  spark_version: 15.4.x-scala2.12
+  node_type_id: i3.2xlarge
+  num_workers: 5
+  data_security_mode: USER_ISOLATION
+  autotermination_minutes: 120
+  enable_elastic_disk: true
+
+notifications:
+  email: prod-team@company.com
+  on_failure: true
+  on_success: true
+
+security:
+  secret_scope: loyalty_prod_secrets
+
+# Pipeline defaults for production
+pipeline_defaults:
+  max_concurrent_runs: 1
+  timeout_seconds: 10800
+  checkpoint_location: /mnt/prod/checkpoints
+  
+# Production-specific settings
+monitoring:
+  enabled: true
+  alert_on_failure: true
+  
+backup:
+  enabled: true
+  retention_days: 30
+
+

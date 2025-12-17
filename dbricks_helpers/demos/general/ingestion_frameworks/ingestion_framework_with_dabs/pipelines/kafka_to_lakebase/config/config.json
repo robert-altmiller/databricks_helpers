@@ -1,0 +1,74 @@
+{
+  "pipeline_name": "[Loyalty2.0] Kafka to Lakebase Streaming",
+  "pipeline_type": "streaming_to_postgres",
+  "description": "Kafka Streaming to Postgres Ingestion Pipeline - Ingests email, address, latitude, longitude",
+  "catalog": "dna_dev",
+  "postgres_connection": {
+    "postgres_instance_name": "jomin-gap-demo",
+    "postgres_database": "databricks_postgres",
+    "postgres_schema": "gold_db",
+    "postgres_table": "kafka_data"
+  },
+  "kafka_source": {
+    "kafka_topic": "jomin_johny_fe_tech_onboarding_kafka_test-4",
+    "kafka_secret_scope": "oetrta",
+    "kafka_secret_key": "kafka-bootstrap-servers-plaintext",
+    "kafka_security_protocol": "PLAINTEXT",
+    "starting_offsets": "latest"
+  },
+  "streaming_config": {
+    "checkpoint_location": "/tmp/kafka_postgres_checkpoint",
+    "trigger_mode": "processingTime",
+    "trigger_interval": "10 seconds",
+    "max_records_per_trigger": 100
+  },
+  "ingestion_fields": [
+    "email",
+    "address",
+    "latitude",
+    "longitude"
+  ],
+  "job_cluster": {
+    "job_cluster_key": "shared_cluster",
+    "spark_version": "15.4.x-scala2.12",
+    "node_type_id": "Standard_DS3_v2",
+    "num_workers": 2,
+    "data_security_mode": "USER_ISOLATION"
+  },
+  "tasks": [
+    {
+      "task_key": "kafka_to_postgres_ingestion",
+      "notebook_path": "notebooks/kafka_to_postgres.py",
+      "description": "Main Kafka to Postgres streaming ingestion"
+    },
+    {
+      "task_key": "customer_stats_generator",
+      "notebook_path": "notebooks/customer_stats_generator.py",
+      "description": "Generate customer stats every minute",
+      "stats_interval": 60
+    }
+  ],
+  "settings": {
+    "notification_email": "data-team@company.com",
+    "max_concurrent_runs": 1
+  },
+  "pipeline_category": "streaming",
+  "workspace_config": {
+    "dev": "https://adb-6119190421902441.1.azuredatabricks.net/",
+    "staging": "https://adb-6119190421902441.1.azuredatabricks.net/",
+    "prod": "https://adb-6119190421902441.1.azuredatabricks.net/"
+  },
+  "source_config": {
+    "default_source": "WORKSPACE",
+    "git_config": {
+      "git_url": "git@github.gapinc.com:bia-core-data-platform/databricks-ai-utils.git",
+      "git_provider": "gitHubEnterprise"
+    },
+    "environment_overrides": {
+      "dev": "WORKSPACE",
+      "staging": "GIT",
+      "prod": "GIT"
+    }
+  }
+}
+

@@ -1,0 +1,47 @@
+bundle:
+  name: loyalty2.0_framework
+
+# Include all pipeline configurations
+include:
+  - pipelines/*/databricks.yml
+
+# Variables that can be overridden per environment
+variables:
+  catalog:
+    description: Unity Catalog name
+    default: loyalty_dev
+  notification_email:
+    description: Email for job notifications
+    default: data-team@company.com
+
+# Environment-specific targets
+targets:
+  dev:
+    mode: development
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: loyalty_dev
+      notification_email: dev-team@company.com
+    
+  staging:
+    mode: development
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: loyalty_staging
+      notification_email: staging-team@company.com
+    
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: loyalty_prod
+      notification_email: prod-team@company.com
+    permissions:
+      - level: CAN_VIEW
+        group_name: "loyalty-viewers"
+      - level: CAN_MANAGE_RUN
+        group_name: "loyalty-operators"
+

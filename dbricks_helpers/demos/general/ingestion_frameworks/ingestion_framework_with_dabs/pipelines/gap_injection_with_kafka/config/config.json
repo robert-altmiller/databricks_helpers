@@ -1,0 +1,65 @@
+{
+  "pipeline_name": "[Loyalty2.0] Kafka Ingestion to Bronze",
+  "pipeline_type": "injection",
+  "description": "Kafka Streaming Ingestion Pipeline",
+  "catalog": "dna_dev",
+  "tasks": [
+    {
+      "task_key": "kafka_ingestion",
+      "notebook_path": "notebooks/kafka_ingestion_module.py",
+      "description": "Kafka streaming ingestion to bronze layer"
+    }
+  ],
+  "injection_sources": [
+    {
+      "source_id": 1,
+      "source_name": "kafka_fe_onboarding_test",
+      "source_type": "kafka",
+      "kafka_config": {
+        "kafka_topic": "jomin_johny_fe_tech_onboarding_kafka_test-4",
+        "kafka_bootstrap_servers_secret_scope": "oetrta",
+        "kafka_bootstrap_servers_secret_key": "kafka-bootstrap-servers-plaintext",
+        "kafka_security_protocol": "PLAINTEXT",
+        "starting_offsets": "earliest"
+      },
+      "target_catalog": "dna_dev",
+      "target_schema": "raltmil",
+      "target_table": "kafka_data_bronze",
+      "checkpoint_location": "/tmp/kafka_checkpoint_gap",
+      "trigger_mode": "availableNow",
+      "output_mode": "append",
+      "merge_schema": true
+    }
+  ],
+  "job_cluster": {
+    "job_cluster_key": "shared_cluster",
+    "spark_version": "15.4.x-scala2.12",
+    "node_type_id": "Standard_DS3_v2",
+    "num_workers": 2,
+    "data_security_mode": "USER_ISOLATION"
+  },
+  "settings": {
+    "fail_fast": false,
+    "retry_failed_sources": 1,
+    "notification_email": "data-team@company.com",
+    "max_concurrent_runs": 1
+  },
+  "workspace_config": {
+    "dev": "https://adb-6119190421902441.1.azuredatabricks.net/",
+    "staging": "https://adb-6119190421902441.1.azuredatabricks.net/",
+    "prod": "https://adb-6119190421902441.1.azuredatabricks.net/"
+  },
+  "source_config": {
+    "default_source": "WORKSPACE",
+    "git_config": {
+      "git_url": "git@github.gapinc.com:bia-core-data-platform/databricks-ai-utils.git",
+      "git_provider": "gitHubEnterprise"
+    },
+    "environment_overrides": {
+      "dev": "WORKSPACE",
+      "staging": "GIT",
+      "prod": "GIT"
+    }
+  }
+}
+

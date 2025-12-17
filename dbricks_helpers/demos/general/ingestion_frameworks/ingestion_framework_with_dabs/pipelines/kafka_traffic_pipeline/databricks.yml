@@ -1,0 +1,156 @@
+bundle:
+  name: kafka_traffic_pipeline_bundle
+sync:
+  include:
+  - pipelines/kafka_traffic_pipeline/**
+variables:
+  catalog:
+    description: Unity Catalog name
+    default: dna_dev
+  bronze_database:
+    description: Bronze layer database
+    default: raltmil
+  silver_database:
+    description: Silver layer database
+    default: raltmil
+  gold_database:
+    description: Gold layer database
+    default: raltmil
+  metadata_database:
+    description: Framework metadata database
+    default: raltmil
+  force_recreate:
+    description: Force recreate tables even if they exist
+    default: 'true'
+targets:
+  dev:
+    mode: development
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: dna_dev
+  staging:
+    mode: development
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: dna_dev
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-6119190421902441.1.azuredatabricks.net/
+    variables:
+      catalog: dna_dev
+resources:
+  jobs:
+    loyalty20_traffic_data_etl_pipeline:
+      name: '[Loyalty2.0] Traffic Data ETL Pipeline'
+      tasks:
+      - task_key: step_0_setup_databases
+        notebook_task:
+          notebook_path: notebooks/setup/setup_databases.py
+          source: WORKSPACE
+          base_parameters:
+            catalog: ${var.catalog}
+            bronze_database: ${var.bronze_database}
+            silver_database: ${var.silver_database}
+            gold_database: ${var.gold_database}
+            metadata_database: ${var.metadata_database}
+            force_recreate: ${var.force_recreate}
+            target_catalog: dna_dev
+            target_database: raltmil
+            target_table: setup
+            table_name: setup
+            bronze_table: setup
+            mode: overwrite
+      - task_key: step_1_insert_sample_data
+        notebook_task:
+          notebook_path: notebooks/setup/insert_sample_data.py
+          source: WORKSPACE
+          base_parameters:
+            catalog: ${var.catalog}
+            bronze_database: ${var.bronze_database}
+            silver_database: ${var.silver_database}
+            gold_database: ${var.gold_database}
+            metadata_database: ${var.metadata_database}
+            force_recreate: ${var.force_recreate}
+            target_catalog: dna_dev
+            target_database: raltmil
+            target_table: kafka_data_bronze
+            table_name: kafka_data_bronze
+            bronze_table: kafka_data_bronze
+            mode: append
+        depends_on:
+        - task_key: step_0_setup_databases
+      - task_key: step_2_traffic_data_clean
+        notebook_task:
+          notebook_path: notebooks/bronze_to_silver/traffic_data_clean.py
+          source: WORKSPACE
+          base_parameters:
+            catalog: ${var.catalog}
+            bronze_database: ${var.bronze_database}
+            silver_database: ${var.silver_database}
+            gold_database: ${var.gold_database}
+            metadata_database: ${var.metadata_database}
+            force_recreate: ${var.force_recreate}
+            source_catalog: dna_dev
+            source_database: raltmil
+            source_table: kafka_data_bronze
+            target_catalog: dna_dev
+            target_database: raltmil
+            target_table: slv_traffic_data_cleaned
+            table_name: slv_traffic_data_cleaned
+            bronze_table: slv_traffic_data_cleaned
+            mode: overwrite
+        depends_on:
+        - task_key: step_1_insert_sample_data
+      - task_key: step_3_user_engagement_summary
+        notebook_task:
+          notebook_path: notebooks/bronze_to_silver/user_engagement_summary.py
+          source: WORKSPACE
+          base_parameters:
+            catalog: ${var.catalog}
+            bronze_database: ${var.bronze_database}
+            silver_database: ${var.silver_database}
+            gold_database: ${var.gold_database}
+            metadata_database: ${var.metadata_database}
+            force_recreate: ${var.force_recreate}
+            source_catalog: dna_dev
+            source_database: raltmil
+            source_table: kafka_data_bronze
+            target_catalog: dna_dev
+            target_database: raltmil
+            target_table: slv_customer_engagement_summary
+            table_name: slv_customer_engagement_summary
+            bronze_table: slv_customer_engagement_summary
+            mode: overwrite
+        depends_on:
+        - task_key: step_1_insert_sample_data
+      - task_key: step_4_traffic_data_enriched
+        notebook_task:
+          notebook_path: notebooks/silver_to_gold/traffic_data_enriched.py
+          source: WORKSPACE
+          base_parameters:
+            catalog: ${var.catalog}
+            bronze_database: ${var.bronze_database}
+            silver_database: ${var.silver_database}
+            gold_database: ${var.gold_database}
+            metadata_database: ${var.metadata_database}
+            force_recreate: ${var.force_recreate}
+            source_catalog: dna_dev
+            source_database: raltmil
+            source_table: slv_traffic_data_cleaned
+            target_catalog: dna_dev
+            target_database: raltmil
+            target_table: gld_traffic_data_enriched
+            table_name: gld_traffic_data_enriched
+            bronze_table: gld_traffic_data_enriched
+            mode: overwrite
+        depends_on:
+        - task_key: step_2_traffic_data_clean
+      timeout_seconds: 10800
+      max_concurrent_runs: 1
+      job_clusters: []
+      email_notifications:
+        on_failure:
+        - data-team@company.com

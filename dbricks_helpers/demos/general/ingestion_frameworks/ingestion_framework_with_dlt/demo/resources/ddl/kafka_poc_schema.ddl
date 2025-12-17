@@ -1,0 +1,1 @@
+Brand STRING,Date STRING,Market STRING,email STRING,id STRING,traffic_count STRING

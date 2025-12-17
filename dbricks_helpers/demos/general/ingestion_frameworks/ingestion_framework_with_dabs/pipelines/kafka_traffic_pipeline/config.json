@@ -1,0 +1,123 @@
+{
+  "pipeline_name": "[Loyalty2.0] Traffic Data ETL Pipeline",
+  "description": "Kafka Traffic Data Pipeline - Bronze to Gold",
+  "catalog": "dna_dev",
+  "databases": {
+    "bronze": "raltmil",
+    "silver": "raltmil",
+    "gold": "raltmil",
+    "metadata": "raltmil"
+  },
+  "execution_sequence": [
+    {
+      "step_id": 0,
+      "step_name": "setup_databases",
+      "layer": "setup",
+      "transformation_type": "notebook",
+      "notebook_path": "notebooks/setup/setup_databases.py",
+      "target_catalog": "dna_dev",
+      "target_database": "raltmil",
+      "target_table": "setup",
+      "mode": "overwrite",
+      "depends_on": []
+    },
+    {
+      "step_id": 1,
+      "step_name": "insert_sample_data",
+      "layer": "setup",
+      "transformation_type": "notebook",
+      "notebook_path": "notebooks/setup/insert_sample_data.py",
+      "target_catalog": "dna_dev",
+      "target_database": "raltmil",
+      "target_table": "kafka_data_bronze",
+      "mode": "append",
+      "depends_on": [0],
+      "description": "Insert 10 sample records into bronze table"
+    },
+    {
+      "step_id": 2,
+      "step_name": "traffic_data_clean",
+      "layer": "bronze_to_silver",
+      "transformation_type": "notebook",
+      "notebook_path": "notebooks/bronze_to_silver/traffic_data_clean.py",
+      "source_catalog": "dna_dev",
+      "source_database": "raltmil",
+      "source_table": "kafka_data_bronze",
+      "target_catalog": "dna_dev",
+      "target_database": "raltmil",
+      "target_table": "slv_traffic_data_cleaned",
+      "mode": "overwrite",
+      "partition_by": ["Brand", "Market"],
+      "optimize_after_write": true,
+      "z_order_by": ["customer_id", "latitude", "longitude"],
+      "depends_on": [1],
+      "description": "Clean and transform traffic data with composite key (customer_id + latitude + longitude)",
+      "primary_key": ["customer_id", "latitude", "longitude"]
+    },
+    {
+      "step_id": 3,
+      "step_name": "user_engagement_summary",
+      "layer": "bronze_to_silver",
+      "transformation_type": "notebook",
+      "notebook_path": "notebooks/bronze_to_silver/user_engagement_summary.py",
+      "source_catalog": "dna_dev",
+      "source_database": "raltmil",
+      "source_table": "kafka_data_bronze",
+      "target_catalog": "dna_dev",
+      "target_database": "raltmil",
+      "target_table": "slv_customer_engagement_summary",
+      "mode": "overwrite",
+      "partition_by": ["user_segment"],
+      "optimize_after_write": true,
+      "z_order_by": ["customer_id", "engagement_score"],
+      "depends_on": [1],
+      "description": "Customer-level aggregations with location and engagement metrics",
+      "primary_key": ["customer_id"]
+    },
+    {
+      "step_id": 4,
+      "step_name": "traffic_data_enriched",
+      "layer": "silver_to_gold",
+      "transformation_type": "notebook",
+      "notebook_path": "notebooks/silver_to_gold/traffic_data_enriched.py",
+      "source_catalog": "dna_dev",
+      "source_database": "raltmil",
+      "source_table": "slv_traffic_data_cleaned",
+      "target_catalog": "dna_dev",
+      "target_database": "raltmil",
+      "target_table": "gld_traffic_data_enriched",
+      "mode": "overwrite",
+      "partition_by": ["Brand", "Market", "event_date_str"],
+      "optimize_after_write": true,
+      "z_order_by": ["customer_id", "latitude", "longitude"],
+      "depends_on": [2],
+      "description": "Gold layer with business data only (no Kafka metadata), primary key: customer_id + lat + lon",
+      "primary_key": ["customer_id", "latitude", "longitude"]
+    }
+  ],
+  "settings": {
+    "parallel_bronze_to_silver": true,
+    "fail_fast": false,
+    "retry_failed_steps": 1,
+    "notification_email": "data-team@company.com",
+    "force_recreate": "true"
+  },
+  "workspace_config": {
+    "dev": "https://adb-6119190421902441.1.azuredatabricks.net/",
+    "staging": "https://adb-6119190421902441.1.azuredatabricks.net/",
+    "prod": "https://adb-6119190421902441.1.azuredatabricks.net/"
+  },
+  "source_config": {
+    "default_source": "WORKSPACE",
+    "git_config": {
+      "git_url": "git@github.gapinc.com:bia-core-data-platform/databricks-ai-utils.git",
+      "git_provider": "gitHubEnterprise"
+    },
+    "environment_overrides": {
+      "dev": "WORKSPACE",
+      "staging": "GIT",
+      "prod": "GIT"
+    }
+  }
+}
+
