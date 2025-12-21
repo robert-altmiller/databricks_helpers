@@ -4,6 +4,7 @@ Tag Processor
 
 from typing import Dict, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import pandas as pd
 
 
 class TagProcessor:
@@ -20,7 +21,8 @@ class TagProcessor:
         results = {"success": [], "failed": []}
         
         for tag_name, tag_value in tags.items():
-            if not tag_value or str(tag_value).upper() in ['NA', 'NULL', '']:
+            # Skip NA, NaN, None, empty, and null-like values
+            if pd.isna(tag_value) or not tag_value or str(tag_value).strip().upper() in ['NA', 'NULL', '', 'NAN', 'N/A', 'NONE']:
                 continue
             
             # Convert boolean-like values

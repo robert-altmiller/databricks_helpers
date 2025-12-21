@@ -27,7 +27,8 @@ from utils import (
     ColumnDescriptionGenerator,
     ColumnDescriptionImporter,
     TableDescriptionGenerator,
-    TableDescriptionImporter
+    TableDescriptionImporter,
+    TagProcessor
 )
 
 # COMMAND ----------
@@ -41,7 +42,7 @@ from utils import (
 # Create widgets
 dbutils.widgets.text("file_path", "/Volumes/dna_dev/raltmil/blobs/Tags_Comments_Analysis_sample_2.xlsx", "Excel File Path")
 dbutils.widgets.text("base_volume_path", "/Volumes/dna_dev/raltmil/blobs", "Volume Path")
-dbutils.widgets.dropdown("model_endpoint", "databricks-meta-llama-3-3-70b-instruct", 
+dbutils.widgets.dropdown("model_endpoint", "databricks-claude-sonnet-4-5", 
                         ["databricks-meta-llama-3-3-70b-instruct", "databricks-claude-sonnet-4-5", "databricks-gemini-2-5-pro"], 
                         "AI Model Endpoint")
 
@@ -139,88 +140,21 @@ print(df_pandas[['table_catalog', 'table_schema', 'table_name']].head())
 
 # COMMAND ----------
 
-# DBTITLE 1,Tag Application Functions
-def apply_tags_to_table(catalog, schema, table, tags_dict):
-    """Apply tags to a table dynamically based on a dictionary of tag names and values."""
-    full_table_name = f"{catalog}.{schema}.{table}"
-    tags_applied = []
-    tags_failed = []
-    
-    for tag_name, tag_value in tags_dict.items():
-        # Skip NA, empty, or None values
-        if pd.isna(tag_value) or str(tag_value).strip().upper() in ['NA', 'N/A', '', 'NONE']:
-            continue
-        
-        # Clean the tag value
-        cleaned_value = str(tag_value).strip()
-        
-        # Handle boolean-like values
-        if cleaned_value in ['1', '1.0']:
-            cleaned_value = 'true'
-        elif cleaned_value in ['0', '0.0']:
-            cleaned_value = 'false'
-        elif cleaned_value.upper() in ['TRUE', 'YES']:
-            cleaned_value = 'true'
-        elif cleaned_value.upper() in ['FALSE', 'NO']:
-            cleaned_value = 'false'
-        
-        # Apply the tag
-        try:
-            alter_sql = f"ALTER TABLE {full_table_name} SET TAGS ('{tag_name}' = '{cleaned_value}')"
-            spark.sql(alter_sql)
-            tags_applied.append(f"{tag_name}='{cleaned_value}'")
-        except Exception as e:
-            error_msg = str(e)
-            if "INVALID_PARAMETER_VALUE" in error_msg:
-                tags_failed.append(f"{tag_name}='{cleaned_value}' (Policy violation)")
-            else:
-                tags_failed.append(f"{tag_name}='{cleaned_value}' ({str(e)[:100]})")
-    
-    # Return results
-    if tags_applied and tags_failed:
-        return True, f"Partial: {len(tags_applied)} applied, {len(tags_failed)} failed"
-    elif tags_applied:
-        return True, f"Success: {', '.join(tags_applied)}"
-    elif tags_failed:
-        return False, f"Failed: {', '.join(tags_failed)}"
-    else:
-        return True, "No tags (all NA)"
-
-def process_table_tags(idx_row):
-    """Process tags for a single table."""
-    idx, row = idx_row
-    try:
-        catalog = row.get('table_catalog')
-        schema = row.get('table_schema')
-        table = row.get('table_name')
-        
-        if pd.isna(catalog) or pd.isna(schema) or pd.isna(table):
-            return None
-        
-        tags_dict = {}
-        for df_column, tag_name in TAG_COLUMN_MAPPING.items():
-            if df_column in row:
-                tags_dict[tag_name] = row.get(df_column)
-        
-        success, message = apply_tags_to_table(catalog, schema, table, tags_dict)
-        return {
-            'table': f"{catalog}.{schema}.{table}",
-            'success': success,
-            'message': message
-        }
-    except Exception as e:
-        return None
-
-# COMMAND ----------
-
-# DBTITLE 1,Apply Tags with Multithreading
+# DBTITLE 1,Apply Tags with TagProcessor
 print("=" * 80)
 print("APPLYING TAGS TO TABLES")
 print(f"Tag columns to process: {list(TAG_COLUMN_MAPPING.values())}")
 print("=" * 80)
 
-with ThreadPoolExecutor(max_workers=int(default_parallelism)) as executor:
-    tag_results = list(filter(None, executor.map(process_table_tags, df_pandas.iterrows())))
+# Initialize TagProcessor
+tag_processor = TagProcessor(
+    spark=spark,
+    tag_column_mapping=TAG_COLUMN_MAPPING,
+    verbose=False
+)
+
+# Execute with multithreading
+tag_results = tag_processor.execute(df_pandas, max_workers=int(default_parallelism))
 
 print("\n" + "=" * 80)
 print(f"TAGS APPLICATION COMPLETE: {len(tag_results)} tables processed")
@@ -228,11 +162,26 @@ print("=" * 80)
 
 # Display summary
 if tag_results:
-    results_df = pd.DataFrame(tag_results)
+    successful = sum(1 for r in tag_results if r['status'] in ['success', 'partial'])
+    failed = sum(1 for r in tag_results if r['status'] == 'error')
+    partial = sum(1 for r in tag_results if r['status'] == 'partial')
+    
     print("\nSummary:")
-    print(f"  Total: {len(results_df)}")
-    print(f"  Successful: {results_df['success'].sum()}")
-    print(f"  Failed: {(~results_df['success']).sum()}")
+    print(f"  Total: {len(tag_results)}")
+    print(f"  Successful: {successful - partial}")
+    print(f"  Partial: {partial}")
+    print(f"  Failed: {failed}")
+    
+    # Show partial failure details
+    if partial > 0:
+        print("\n⚠️  Partial Success Details:")
+        for r in tag_results:
+            if r['status'] == 'partial':
+                print(f"   {r['table']}")
+                print(f"      ✓ Tags applied: {r['success_count']}")
+                print(f"      ✗ Tags failed: {r['failed_count']}")
+                for error in r.get('errors', []):
+                    print(f"         - {error}")
 
 # COMMAND ----------
 
@@ -550,8 +499,8 @@ else:
 
 # DBTITLE 1,Execution Summary
 # Calculate summary
-successful_tags = sum(1 for r in tag_results if r['success']) if tag_results else 0
-failed_tags = len(tag_results) - successful_tags if tag_results else 0
+successful_tags = sum(1 for r in tag_results if r['status'] in ['success', 'partial']) if tag_results else 0
+failed_tags = sum(1 for r in tag_results if r['status'] == 'error') if tag_results else 0
 tag_success_rate = (successful_tags / len(tag_results) * 100) if tag_results else 0
 
 col_desc_success = len(column_desc_success_tables)
@@ -582,9 +531,10 @@ print(f"   ✗ Failed: {table_desc_failed}")
 if failed_tags > 0:
     print("\n⚠️  Tag Failures - Details:")
     for r in tag_results:
-        if not r['success']:
+        if r['status'] == 'error':
             print(f"   ✗ {r['table']}")
-            print(f"      {r['message']}")
+            for error in r.get('errors', []):
+                print(f"      {error}")
 
 if col_desc_failed > 0:
     print("\n⚠️  Column Description Failures - Details:")
@@ -614,7 +564,15 @@ for idx, row in df_pandas.iterrows():
     
     # Get statuses
     tag_result = next((r for r in tag_results if r['table'] == full_table_name), None)
-    tag_status = "✓ Success" if tag_result and tag_result['success'] else "✗ Failed" if tag_result else "○ Not Processed"
+    if tag_result:
+        if tag_result['status'] == 'success':
+            tag_status = "✓ Success"
+        elif tag_result['status'] == 'partial':
+            tag_status = "⚠ Partial"
+        else:
+            tag_status = "✗ Failed"
+    else:
+        tag_status = "○ Not Processed"
     
     # Column description status
     if full_table_name in column_desc_success_tables:
